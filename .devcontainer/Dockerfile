@@ -7,6 +7,7 @@ RUN --mount=type=cache,id=apt,target=/var/cache/apt/archives apt-get update && \
     git \
     curl \
     bash \
+    openssh-client \
     zsh \
     nano \
     vim \
