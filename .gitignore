@@ -37,3 +37,4 @@ lerna-debug.log*
 !.env.example
 
 worker-configuration.d.ts
+wrangler.jsonc

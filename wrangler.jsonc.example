@@ -6,10 +6,26 @@
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "cloudflare-tailscale-dns",
 	"compatibility_date": "2025-12-05",
-	"pages_build_output_dir": "./dist",
+	"main": "./dist/index.js",
 	"observability": {
 		"enabled": true
-	}
+	},
+	"triggers": {
+		"crons": [
+			"0 * * * *"
+		]
+	},
+	"vars": {
+		"CLOUDFLARE_ZONE_ID": "your-cloudflare-zone-id",
+		"DOMAIN_FOR_LAN_ENDPOINT": "lan.example.com",
+		"DOMAIN_FOR_TAILSCALE_ENDPOINT": "ts.example.com",
+		"DOMAIN_FOR_WAN_ENDPOINT": "wan.example.com",
+		"TAILSCALE_TAILNET": "your-tailscale-tailnet-identifier",
+		"TAILSCALE_TAG_FILTER_REGEX": "^tag:dns",
+		"TAILSCALE_TAG_PROXY_REGEX": "^tag:proxy",
+		"LAN_CIDR_RANGES": "192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,100.64.0.0/10",
+		"DNS_RECORD_OWNER_ID": "your-owner-id"
+	},
 	/**
 	 * Smart Placement
 	 * Docs: https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
