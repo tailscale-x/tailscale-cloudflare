@@ -1,0 +1,17 @@
+{
+    "name": "cloudflare-worker-dns",
+    "dockerFile": "Dockerfile",
+    "context": "..",
+    "mounts": [
+        "source=${localWorkspaceFolder},target=/workspace,type=bind",
+        "source=${localEnv:HOME}/.wrangler,target=/home/node/.wrangler,type=bind"
+    ],
+    "initializeCommand": "mkdir -p ${HOME}/.wrangler",
+    "updateRemoteUserUID": true,
+    "remoteUser": "node",
+    "extensions": [],
+    "settings": {
+        "terminal.integrated.shell.linux": "/bin/zsh"
+    },
+    "postStartCommand": "npm install && npm run cf-typegen"
+}
