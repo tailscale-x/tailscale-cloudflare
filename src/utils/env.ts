@@ -139,6 +139,26 @@ const envSchema = z.object({
 		},
 		z.instanceof(RegExp)
 	),
+	CONFIG_SSE_INTERVAL_MS: z.preprocess(
+		(val) => (typeof val === 'string' && val.trim() === '' ? undefined : val),
+		z.string().optional()
+	),
+	LOG_LEVEL: z.preprocess(
+		(val) => (typeof val === 'string' && val.trim() === '' ? undefined : val),
+		z
+			.string()
+			.optional()
+			.refine(
+				(val) => {
+					if (!val) return true
+					const upper = val.toUpperCase()
+					return ['DEBUG', 'INFO', 'WARN', 'ERROR'].includes(upper)
+				},
+				{
+					message: 'LOG_LEVEL must be one of: DEBUG, INFO, WARN, ERROR',
+				}
+			)
+	),
 })
 
 export type ValidatedEnv = z.infer<typeof envSchema>

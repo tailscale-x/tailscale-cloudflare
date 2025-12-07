@@ -34,3 +34,8 @@ export interface ClassifiedIPs {
 	lanIP?: string // Single LAN IP (one selected from available)
 	wanIPs?: string[] // Multiple WAN IPs for round-robin
 }
+
+export interface TailscaleACL {
+	hosts?: Record<string, string> // Map of host aliases to IP addresses
+	[key: string]: unknown // Allow other ACL fields
+}

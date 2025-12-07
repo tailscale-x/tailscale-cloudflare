@@ -1,9 +1,10 @@
 // Tailscale API Client
 
-import type { TailscaleDevice, TailscaleDevicesResponse, ClassifiedIPs } from '../types/tailscale'
+import type { TailscaleDevice, TailscaleDevicesResponse, TailscaleACL, ClassifiedIPs } from '../types/tailscale'
 import { getIPsByType } from '../utils/ip-classifier'
 import { createLogger } from '../utils/logger'
 import { ApiError } from '../utils/errors'
+import { parse as parseJsonc } from 'jsonc-parser'
 
 const logger = createLogger()
 
@@ -25,7 +26,7 @@ export class TailscaleClient {
 		this.lanCidrRanges = config.lanCidrRanges
 	}
 
-	private async request<T>(endpoint: string): Promise<T> {
+	private async request<T>(endpoint: string, options?: { jsonc?: boolean }): Promise<T> {
 		const url = `${this.baseUrl}${endpoint}`
 		const response = await fetch(url, {
 			headers: {
@@ -43,6 +44,15 @@ export class TailscaleClient {
 			)
 			logger.error(`Tailscale API request failed: ${endpoint}`, error)
 			throw error
+		}
+
+		// Handle JSONC (JSON with Comments) if requested
+		logger.warn(`JSONC: ${options?.jsonc}`)
+		if (options?.jsonc) {
+			const jsoncText = await response.text()
+			const parsed = parseJsonc(jsoncText) as T
+			logger.info(`JSON text: ${JSON.stringify(parsed)}`)
+			return parsed
 		}
 
 		return response.json()
@@ -76,17 +86,22 @@ export class TailscaleClient {
 	}
 
 	/**
-	 * Get a specific device by ID
-	 */
-	async getDeviceById(id: string): Promise<TailscaleDevice | null> {
-		const devices = await this.getDevices()
-		return devices.find(d => d.id === id) || null
-	}
-
-	/**
 	 * Classify endpoints from a device and return IPs by type
 	 */
 	classifyEndpoints(device: TailscaleDevice): ClassifiedIPs {
 		return getIPsByType(device, this.lanCidrRanges)
+	}
+
+	/**
+	 * Fetch ACL configuration from the tailnet
+	 * Returns the ACL JSON including hosts field
+	 * Note: Tailscale ACL API returns JSONC (JSON with Comments), so we need to strip comments
+	 */
+	async getACL(): Promise<TailscaleACL> {
+		const endpoint = `/tailnet/${this.tailnet}/acl`
+		logger.info(`Fetching ACL from Tailscale API: ${endpoint}`)
+		const acl = await this.request<TailscaleACL>(endpoint, { jsonc: true })
+		logger.info(`Retrieved ACL with ${Object.keys(acl.hosts || {}).length} host entries`)
+		return acl
 	}
 }

@@ -7,6 +7,7 @@ import { errorHandler } from './middleware/error-handler'
 import { handleWebhook } from './handlers/webhook'
 import { handleScheduled } from './handlers/scheduled'
 import { handleSyncAll } from './handlers/sync-all'
+import { handleConfig } from './handlers/config'
 import { createLogger } from './utils/logger'
 
 const logger = createLogger()
@@ -30,6 +31,9 @@ app.post('/webhook', handleWebhook)
 
 // Manual sync endpoint
 app.get('/syncAll', handleSyncAll)
+
+// Configuration endpoint for external services
+app.get('/api/config', handleConfig)
 
 // Worker entry point
 export default {

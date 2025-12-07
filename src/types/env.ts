@@ -14,4 +14,6 @@ export interface Env {
 	DNS_RECORD_OWNER_ID?: string
 	TAILSCALE_TAG_FILTER_REGEX: string
 	TAILSCALE_TAG_PROXY_REGEX: string
+	CONFIG_SSE_INTERVAL_MS?: string
+	LOG_LEVEL?: string
 }
