@@ -1,4 +1,4 @@
-# Tailscale to Cloudflare DNS Sync
+# tailscale-cloudflare
 
 A Cloudflare Worker that automatically syncs DNS records from Tailscale machines to Cloudflare DNS. Each machine creates A records across three configurable domains (Tailscale, WAN, and LAN) with ownership validation using DNS record comments.
 
