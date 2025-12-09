@@ -39,3 +39,48 @@ export interface TailscaleACL {
 	hosts?: Record<string, string> // Map of host aliases to IP addresses
 	[key: string]: unknown // Allow other ACL fields
 }
+
+export type TailscaleWebhookEventType =
+	| 'nodeCreated'
+	| 'nodeNeedsApproval'
+	| 'nodeApproved'
+	| 'nodeKeyExpiringInOneDay'
+	| 'nodeKeyExpired'
+	| 'nodeDeleted'
+	| 'nodeSigned'
+	| 'nodeNeedsSignature'
+	| 'policyUpdate'
+	| 'userCreated'
+	| 'userNeedsApproval'
+	| 'userSuspended'
+	| 'userRestored'
+	| 'userDeleted'
+	| 'userApproved'
+	| 'userRoleUpdated'
+	| 'subnetIPForwardingNotEnabled'
+	| 'exitNodeIPForwardingNotEnabled'
+
+export interface TailscaleWebhook {
+	endpointId: string
+	endpointUrl: string
+	providerType?: 'slack' | 'mattermost' | 'googlechat' | 'discord' | ''
+	creatorLoginName?: string
+	created?: string
+	lastModified?: string
+	subscriptions: TailscaleWebhookEventType[]
+	secret?: string // Only populated on creation or rotation
+}
+
+export interface TailscaleWebhooksResponse {
+	webhooks: TailscaleWebhook[]
+}
+
+export interface CreateTailscaleWebhookRequest {
+	endpointUrl: string
+	providerType?: 'slack' | 'mattermost' | 'googlechat' | 'discord' | ''
+	subscriptions: TailscaleWebhookEventType[]
+}
+
+export interface UpdateTailscaleWebhookRequest {
+	subscriptions?: TailscaleWebhookEventType[]
+}

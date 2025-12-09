@@ -11,7 +11,7 @@ function constantTimeEqual(a: string, b: string): boolean {
 	if (a.length !== b.length) {
 		return false
 	}
-	
+
 	let result = 0
 	for (let i = 0; i < a.length; i++) {
 		result |= a.charCodeAt(i) ^ b.charCodeAt(i)
@@ -32,18 +32,18 @@ export async function validateWebhookSignature(
 	if (!secret) {
 		return true
 	}
-	
+
 	// If secret is configured but no signature provided, reject
 	if (!signature) {
 		return false
 	}
-	
+
 	try {
 		// Generate HMAC-SHA256 signature
 		const encoder = new TextEncoder()
 		const keyData = encoder.encode(secret)
 		const messageData = encoder.encode(payload)
-		
+
 		const key = await crypto.subtle.importKey(
 			'raw',
 			keyData,
@@ -51,18 +51,27 @@ export async function validateWebhookSignature(
 			false,
 			['sign']
 		)
-		
+
 		const signatureBuffer = await crypto.subtle.sign('HMAC', key, messageData)
-		
+
 		// Convert signature to hex string
 		const expectedSignature = Array.from(new Uint8Array(signatureBuffer))
 			.map(b => b.toString(16).padStart(2, '0'))
 			.join('')
-		
+
 		// Use constant-time comparison to prevent timing attacks
 		return constantTimeEqual(signature.toLowerCase(), expectedSignature.toLowerCase())
 	} catch (error) {
 		logger.error('Webhook signature validation error:', error)
 		return false
 	}
+}
+
+/**
+ * Extract webhook URL from a request by normalizing to the /webhook path.
+ */
+export function extractWebhookUrlFromRequest(request: Request): string {
+	const url = new URL(request.url)
+	const baseUrl = `${url.protocol}//${url.host}`
+	return `${baseUrl}/webhook`
 }

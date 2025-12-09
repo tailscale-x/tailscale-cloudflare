@@ -5,7 +5,7 @@ import type {
 	RecordResponse,
 	ARecordParam,
 } from 'cloudflare/resources/dns/records'
-import { TailscaleClient } from './tailscale'
+import { TailscaleClient } from './tailscale-client'
 import { CloudflareClient } from './cloudflare'
 import { createLogger } from '../utils/logger'
 import { classifyIP } from '../utils/ip-classifier'
@@ -19,8 +19,10 @@ export interface TailscaleMachineSyncConfig {
 	wanDomain: string
 	lanDomain: string
 	ownerId: string
-	tagFilterRegex: RegExp
-	proxyTagRegex: RegExp
+	lanTagRegex: RegExp
+	tailscaleTagRegex: RegExp
+	wanNoProxyTagRegex: RegExp
+	wanProxyTagRegex: RegExp
 	lanCidrRanges: string[]
 }
 
@@ -50,8 +52,10 @@ export class TailscaleMachineSyncService {
 	private wanDomain: string
 	private lanDomain: string
 	private ownerId: string
-	private tagFilterRegex: RegExp
-	private proxyTagRegex: RegExp
+	private lanTagRegex: RegExp
+	private tailscaleTagRegex: RegExp
+	private wanNoProxyTagRegex: RegExp
+	private wanProxyTagRegex: RegExp
 	private lanCidrRanges: string[]
 
 	constructor(config: TailscaleMachineSyncConfig) {
@@ -62,8 +66,10 @@ export class TailscaleMachineSyncService {
 		this.lanDomain = config.lanDomain
 		this.ownerId = config.ownerId
 		// Regex objects are already compiled by Zod validation
-		this.tagFilterRegex = config.tagFilterRegex
-		this.proxyTagRegex = config.proxyTagRegex
+		this.lanTagRegex = config.lanTagRegex
+		this.tailscaleTagRegex = config.tailscaleTagRegex
+		this.wanNoProxyTagRegex = config.wanNoProxyTagRegex
+		this.wanProxyTagRegex = config.wanProxyTagRegex
 		this.lanCidrRanges = config.lanCidrRanges
 	}
 
@@ -77,45 +83,47 @@ export class TailscaleMachineSyncService {
 	}
 
 	/**
-	 * Check if device should be included based on tag filter regex
-	 * A device is included if any of its tags match the regex pattern
+	 * Check if device should have LAN record created based on tag regex
+	 * A LAN record is created if any of the device's tags match the LAN regex pattern
 	 */
-	private shouldIncludeDevice(device: TailscaleDevice): boolean {
-		const machineName = this.getMachineName(device) || device.id
-		
-		// If device has no tags, exclude it
+	private shouldCreateLanRecord(device: TailscaleDevice): boolean {
 		if (!device.tags || device.tags.length === 0) {
-			logger.info(`Device ${machineName} excluded: no tags (filter regex: ${this.tagFilterRegex.source})`)
 			return false
 		}
-
-		// Check if any tag matches the regex
-		const matches = device.tags.some(tag => this.tagFilterRegex.test(tag))
-		if (!matches) {
-			logger.info(`Device ${machineName} excluded: no tags match filter regex ${this.tagFilterRegex.source} (device tags: ${device.tags.join(', ')})`)
-		}
-		return matches
+		return device.tags.some(tag => this.lanTagRegex.test(tag))
 	}
 
 	/**
-	 * Check if device should have Cloudflare proxy enabled based on tag regex
-	 * A device is proxied if any of its tags match the proxy regex pattern
+	 * Check if device should have Tailscale record created based on tag regex
+	 * A Tailscale record is created if any of the device's tags match the Tailscale regex pattern
 	 */
-	private shouldProxyDevice(device: TailscaleDevice): boolean {
-		const machineName = this.getMachineName(device) || device.id
-		
-		// If device has no tags, don't proxy
+	private shouldCreateTailscaleRecord(device: TailscaleDevice): boolean {
 		if (!device.tags || device.tags.length === 0) {
-			logger.info(`Device ${machineName} proxy disabled: no tags (proxy regex: ${this.proxyTagRegex.source})`)
 			return false
 		}
+		return device.tags.some(tag => this.tailscaleTagRegex.test(tag))
+	}
 
-		// Check if any tag matches the proxy regex
-		const matches = device.tags.some(tag => this.proxyTagRegex.test(tag))
-		if (!matches) {
-			logger.info(`Device ${machineName} proxy disabled: no tags match proxy regex ${this.proxyTagRegex.source} (device tags: ${device.tags.join(', ')})`)
+	/**
+	 * Check if device should have WAN record created with proxy disabled based on tag regex
+	 * A WAN record with proxy disabled is created if any of the device's tags match the WAN_NO_PROXY regex pattern
+	 */
+	private shouldCreateWanNoProxyRecord(device: TailscaleDevice): boolean {
+		if (!device.tags || device.tags.length === 0) {
+			return false
 		}
-		return matches
+		return device.tags.some(tag => this.wanNoProxyTagRegex.test(tag))
+	}
+
+	/**
+	 * Check if device should have WAN record created with proxy enabled based on tag regex
+	 * A WAN record with proxy enabled is created if any of the device's tags match the WAN_PROXY regex pattern
+	 */
+	private shouldCreateWanProxyRecord(device: TailscaleDevice): boolean {
+		if (!device.tags || device.tags.length === 0) {
+			return false
+		}
+		return device.tags.some(tag => this.wanProxyTagRegex.test(tag))
 	}
 
 	/**
@@ -136,12 +144,12 @@ export class TailscaleMachineSyncService {
 	private createRecordComment(machineName: string): string {
 		const base = `${TailscaleMachineSyncService.HERITAGE}:${this.ownerId}:`
 		const maxLength = 100
-		
+
 		// If base + machineName fits, return as-is
 		if (base.length + machineName.length <= maxLength) {
 			return `${base}${machineName}`
 		}
-		
+
 		// Otherwise, truncate machineName to fit within 100 characters
 		const availableLength = maxLength - base.length
 		const truncatedMachineName = machineName.substring(0, Math.max(0, availableLength))
@@ -161,8 +169,9 @@ export class TailscaleMachineSyncService {
 
 	/**
 	 * Create DNS records for a single IP and domain with ownership comment
-	 * Sets proxied field: only enabled for WAN domain records (if device tags match proxy regex)
-	 * TS and LAN domains are always DNS-only (proxied: false) since they use private IPs
+	 * Sets proxied field based on domain type and tag regex matching:
+	 * - TS and LAN domains: always DNS-only (proxied: false) since they use private IPs
+	 * - WAN domain: proxied based on whether device tags match WAN_PROXY or WAN_NO_PROXY regex
 	 * 
 	 * IMPORTANT: LAN IPs should NEVER be in the WAN domain. If a LAN IP is passed with WAN domain,
 	 * this indicates a classification bug. We disable proxy as a safeguard, but this should not happen.
@@ -173,31 +182,35 @@ export class TailscaleMachineSyncService {
 		machineName: string,
 		ip: string,
 		domain: string,
-		device: TailscaleDevice
+		device: TailscaleDevice,
+		proxied: boolean
 	): { aRecord: ARecordParam; aKey: string } {
 		// Safety check: if domain is empty, this shouldn't be called
 		if (!domain) {
 			throw new Error(`Cannot create DNS record: domain is empty for machine ${machineName} with IP ${ip}`)
 		}
-		
+
 		const aRecordName = `${machineName}.${domain}`
 		const aKey = this.getRecordKey('A', aRecordName, ip)
-		
+
 		// Check if IP is in LAN CIDR range
 		const isLanIP = classifyIP(ip, this.lanCidrRanges) === 'lan'
 		const isWanDomain = Boolean(this.wanDomain && domain === this.wanDomain)
-		
+
 		// Safety check: LAN IPs should NEVER be in WAN domain - this indicates a classification bug
 		if (isLanIP && isWanDomain) {
 			logger.warn(
 				`LAN IP ${ip} detected in WAN domain for ${machineName}. This should not happen - ` +
 				`check LAN_CIDR_RANGES configuration. Disabling proxy as safeguard.`
 			)
+			// Force proxy to false for safety
+			proxied = false
 		}
-		
-		// Only enable proxy for WAN domain records (public IPs) and only if IP is not a LAN IP
-		// TS and LAN domains use private IPs, so always disable proxy
-		const proxied: boolean = isWanDomain && !isLanIP && this.shouldProxyDevice(device)
+
+		// TS and LAN domains always have proxy disabled (private IPs)
+		if (!isWanDomain) {
+			proxied = false
+		}
 
 		return {
 			aRecord: {
@@ -231,7 +244,12 @@ export class TailscaleMachineSyncService {
 	 * Build expected records from classified IPs
 	 * Handles multiple WAN IPs for round-robin, single LAN IP selection
 	 * All A records include ownership comments instead of separate TXT records
-	 * Proxy is only enabled for WAN domain records (if device tags match proxy regex)
+	 * Record creation and proxy settings are controlled by tag regex matching:
+	 * - TS records: created if device tags match TAILSCALE regex
+	 * - LAN records: created if device tags match LAN regex
+	 * - WAN records: created if device tags match WAN_NO_PROXY or WAN_PROXY regex
+	 *   - WAN_NO_PROXY: creates WAN record with proxy disabled
+	 *   - WAN_PROXY: creates WAN record with proxy enabled
 	 * TS and LAN domain records are always DNS-only (proxied: false)
 	 * Skips creating records for empty domain configurations
 	 */
@@ -242,15 +260,19 @@ export class TailscaleMachineSyncService {
 		const records: ARecordParam[] = []
 		const keys = new Set<string>()
 
-		// Handle Tailscale IP - only if tsDomain is configured
-		if (classifiedIPs.tailscaleIP && this.tsDomain) {
-			const { aRecord, aKey } = this.createARecordForIP(machineName, classifiedIPs.tailscaleIP, this.tsDomain, device)
+		// Handle Tailscale IP - only if tsDomain is configured and device tags match TAILSCALE regex
+		if (classifiedIPs.tailscaleIP && this.tsDomain && this.shouldCreateTailscaleRecord(device)) {
+			const { aRecord, aKey } = this.createARecordForIP(machineName, classifiedIPs.tailscaleIP, this.tsDomain, device, false)
 			records.push(aRecord)
 			keys.add(aKey)
 		}
 
 		// Handle WAN IPs - multiple for round-robin, only if wanDomain is configured
-		if (classifiedIPs.wanIPs && classifiedIPs.wanIPs.length > 0 && this.wanDomain) {
+		// Check both WAN_NO_PROXY and WAN_PROXY regexes
+		const shouldCreateWanNoProxy = this.shouldCreateWanNoProxyRecord(device)
+		const shouldCreateWanProxy = this.shouldCreateWanProxyRecord(device)
+
+		if (classifiedIPs.wanIPs && classifiedIPs.wanIPs.length > 0 && this.wanDomain && (shouldCreateWanNoProxy || shouldCreateWanProxy)) {
 			// Create multiple A records with same name for round-robin
 			for (const wanIP of classifiedIPs.wanIPs) {
 				// Double-check classification: if this IP is actually a LAN IP, log a warning
@@ -262,15 +284,19 @@ export class TailscaleMachineSyncService {
 						`This indicates a bug in IP classification. LAN_CIDR_RANGES: ${this.lanCidrRanges.join(', ')}`
 					)
 				}
-				const { aRecord, aKey } = this.createARecordForIP(machineName, wanIP, this.wanDomain, device)
+
+				// Determine proxy setting: prefer WAN_PROXY if both match, otherwise use WAN_NO_PROXY
+				const proxied = shouldCreateWanProxy
+
+				const { aRecord, aKey } = this.createARecordForIP(machineName, wanIP, this.wanDomain, device, proxied)
 				records.push(aRecord)
 				keys.add(aKey)
 			}
 		}
 
-		// Handle LAN IP - single selection, only if lanDomain is configured
-		if (classifiedIPs.lanIP && this.lanDomain) {
-			const { aRecord, aKey } = this.createARecordForIP(machineName, classifiedIPs.lanIP, this.lanDomain, device)
+		// Handle LAN IP - single selection, only if lanDomain is configured and device tags match LAN regex
+		if (classifiedIPs.lanIP && this.lanDomain && this.shouldCreateLanRecord(device)) {
+			const { aRecord, aKey } = this.createARecordForIP(machineName, classifiedIPs.lanIP, this.lanDomain, device, false)
 			records.push(aRecord)
 			keys.add(aKey)
 		}
@@ -343,10 +369,10 @@ export class TailscaleMachineSyncService {
 	 * Cloudflare batch API supports up to 200 operations total (deletes + creates)
 	 */
 	private async executeBatchOperations(
-		recordIdsToDelete: string[],
+		recordsToDelete: RecordResponse[],
 		recordsToCreate: ARecordParam[]
 	): Promise<void> {
-		if (recordIdsToDelete.length === 0 && recordsToCreate.length === 0) {
+		if (recordsToDelete.length === 0 && recordsToCreate.length === 0) {
 			return
 		}
 
@@ -354,14 +380,14 @@ export class TailscaleMachineSyncService {
 		let deleteIdx = 0
 		let createIdx = 0
 
-		while (deleteIdx < recordIdsToDelete.length || createIdx < recordsToCreate.length) {
+		while (deleteIdx < recordsToDelete.length || createIdx < recordsToCreate.length) {
 			const remainingOps = TailscaleMachineSyncService.BATCH_SIZE
-			const deleteBatch: string[] = []
+			const deleteBatch: RecordResponse[] = []
 			const createBatch: ARecordParam[] = []
 
 			// Fill batch with deletes first
-			while (deleteIdx < recordIdsToDelete.length && deleteBatch.length + createBatch.length < remainingOps) {
-				deleteBatch.push(recordIdsToDelete[deleteIdx++])
+			while (deleteIdx < recordsToDelete.length && deleteBatch.length + createBatch.length < remainingOps) {
+				deleteBatch.push(recordsToDelete[deleteIdx++])
 			}
 
 			// Then fill with creates
@@ -400,11 +426,16 @@ export class TailscaleMachineSyncService {
 		logger.info('Starting DNS synchronization for all machines')
 		const devices = await this.tailscaleClient.getDevices()
 		logger.info(`Found ${devices.length} devices from Tailscale`)
-		
-		// Filter devices based on tag filter regex
-		const filteredDevices = devices.filter(device => this.shouldIncludeDevice(device))
-		logger.info(`Filtered to ${filteredDevices.length} devices matching tag filter: ${this.tagFilterRegex.source}`)
-		
+
+		// Filter devices: include if they match any of the record type regexes
+		const filteredDevices = devices.filter(device => {
+			return this.shouldCreateLanRecord(device) ||
+				this.shouldCreateTailscaleRecord(device) ||
+				this.shouldCreateWanNoProxyRecord(device) ||
+				this.shouldCreateWanProxyRecord(device)
+		})
+		logger.info(`Filtered to ${filteredDevices.length} devices matching record type regexes (out of ${devices.length} total)`)
+
 		// Build expected records map from current Tailscale devices
 		const expectedRecordsMap = new Map<string, ARecordParam>()
 
@@ -416,7 +447,7 @@ export class TailscaleMachineSyncService {
 			}
 
 			const classifiedIPs = this.tailscaleClient.classifyEndpoints(device)
-			
+
 			// Warn if no WAN or LAN IPs found - might indicate incorrect subnet configuration
 			if ((!classifiedIPs.wanIPs || classifiedIPs.wanIPs.length === 0) && !classifiedIPs.lanIP) {
 				const endpoints = device.clientConnectivity?.endpoints || []
@@ -428,7 +459,7 @@ export class TailscaleMachineSyncService {
 				// Log full device structure for debugging
 				logger.debug(`Full device structure for ${machineName}: ${JSON.stringify(device, null, 2)}`)
 			}
-			
+
 			const { records } = this.buildExpectedRecords(machineName, classifiedIPs, device)
 
 			// Add to expected records map
@@ -452,8 +483,7 @@ export class TailscaleMachineSyncService {
 		// Execute: Delete and create in batches
 		if (toDelete.length > 0 || toCreate.length > 0) {
 			logger.info(`Executing batch operations: ${toDelete.length} deletes, ${toCreate.length} creates`)
-			const recordIdsToDelete = toDelete.map(r => r.id!).filter((id): id is string => !!id)
-			await this.executeBatchOperations(recordIdsToDelete, toCreate)
+			await this.executeBatchOperations(toDelete, toCreate)
 			logger.info('Batch operations completed successfully')
 		} else {
 			logger.info('No DNS changes required - all records are up to date')

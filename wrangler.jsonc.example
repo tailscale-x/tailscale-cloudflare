@@ -15,17 +15,20 @@
 			"0 * * * *"
 		]
 	},
-	"vars": {
-		"CLOUDFLARE_ZONE_ID": "your-cloudflare-zone-id",
-		"DOMAIN_FOR_LAN_ENDPOINT": "lan.example.com",
-		"DOMAIN_FOR_TAILSCALE_ENDPOINT": "ts.example.com",
-		"DOMAIN_FOR_WAN_ENDPOINT": "wan.example.com",
-		"TAILSCALE_TAILNET": "your-tailscale-tailnet-identifier",
-		"TAILSCALE_TAG_FILTER_REGEX": "^tag:dns",
-		"TAILSCALE_TAG_PROXY_REGEX": "^tag:proxy",
-		"LAN_CIDR_RANGES": "192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,100.64.0.0/10",
-		"DNS_RECORD_OWNER_ID": "your-owner-id"
-	},
+	/**
+	 * KV Namespace Binding (REQUIRED)
+	 * Create a KV namespace and add its ID here:
+	 * 
+	 * 1. Create namespace: wrangler kv:namespace create "CONFIG_KV"
+	 * 2. Copy the namespace ID from output
+	 * 3. Replace "your-kv-namespace-id" below with the actual ID
+	 */
+	"kv_namespaces": [
+		{
+			"binding": "CONFIG_KV",
+			"id": "your-kv-namespace-id"
+		}
+	],
 	/**
 	 * Smart Placement
 	 * Docs: https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement

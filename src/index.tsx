@@ -1,14 +1,13 @@
 import { Hono } from 'hono'
 import type { Env } from './types/env'
 import type { AppContext } from './types/app'
-import { validateEnv } from './utils/env'
-import { envValidationMiddleware } from './middleware/env-validation'
+import { settingsMiddleware } from './middleware/settings'
 import { errorHandler } from './middleware/error-handler'
 import { handleWebhook } from './handlers/webhook'
 import { handleScheduled } from './handlers/scheduled'
-import { handleSyncAll } from './handlers/sync-all'
-import { handleConfig } from './handlers/config'
+import { configHandler } from './handlers/config'
 import { createLogger } from './utils/logger'
+import { validateEnv } from './utils/env'
 
 const logger = createLogger()
 
@@ -17,8 +16,8 @@ const app = new Hono<AppContext>()
 // Global error handler - must be registered before other middleware
 app.onError(errorHandler)
 
-// Middleware to validate and inject env into context
-app.use('*', envValidationMiddleware)
+// Middleware to validate and inject settings into context
+app.use('*', settingsMiddleware)
 
 // Health check endpoint
 app.get('/', (c) => {
@@ -26,14 +25,11 @@ app.get('/', (c) => {
 	return c.json({ status: 'ok', service: 'tailscale-cloudflare-dns-sync' })
 })
 
-// Webhook endpoint for Tailscale events
-app.post('/webhook', handleWebhook)
+// Webhook endpoint: GET for sync-all + webhook setup, POST for Tailscale events
+app.all('/webhook', handleWebhook)
 
-// Manual sync endpoint
-app.get('/syncAll', handleSyncAll)
-
-// Configuration endpoint for external services
-app.get('/api/config', handleConfig)
+// Config UI endpoint
+app.all('/config', configHandler)
 
 // Worker entry point
 export default {

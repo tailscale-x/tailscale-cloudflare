@@ -46,10 +46,9 @@ sequenceDiagram
 
 | Component | Description |
 |-----------|-------------|
+| **Webhook Handler** (`GET /webhook`) | Manual endpoint to trigger full synchronization and set up Tailscale webhook. Extracts webhook URL from request and stores it in KV |
 | **Webhook Handler** (`POST /webhook`) | Receives Tailscale webhook events, validates signatures, and triggers full sync of all machines |
-| **Cron Handler** (hourly) | Scheduled job that performs full synchronization of all devices from Tailscale to Cloudflare DNS |
-| **Manual Sync** (`GET /syncAll`) | Manual endpoint to trigger full synchronization on demand. Useful for testing or immediate sync without waiting for webhook or cron |
-| **Configuration API** (`GET /api/config`) | Server-Sent Events (SSE) endpoint that streams real-time configuration snapshots containing Tailscale devices and ACL configuration. Used by first-party extensions/plugins (e.g., [cloudflare-tailscale-traefik](https://github.com/cloudflare-tailscale/cloudflare-tailscale-traefik)) to generate dynamic routing configurations |
+| **Cron Handler** (hourly) | Scheduled job that performs full synchronization of all devices from Tailscale to Cloudflare DNS. Also verifies and updates webhook configuration using URL stored in KV |
 | **DNS Sync Service** | Orchestrates the sync process: fetches devices, classifies IPs, builds expected records, fetches existing records, performs diff, and executes batch operations |
 | **Tailscale Client** | Handles Tailscale API interactions and IP classification (LAN/WAN/TS) based on configured CIDR ranges |
 | **Cloudflare Client** | Manages Cloudflare DNS API operations including fetching records by comment prefix and batch create/delete operations |
@@ -61,7 +60,7 @@ For each machine `<machine-name>`, the following DNS records are created:
 | Record Type | Domain Pattern | IP Type | Description |
 |-------------|----------------|---------|-------------|
 | A | `<machine-name>.<ts-domain>` | Tailscale IP | Tailscale-assigned IP address (typically 100.x.y.z) |
-| A | `<machine-name>.<wan-domain>` | WAN IP | Public IP address (before router NAT). Used for dyndns-style CNAME records. Typically points to reverse proxy (e.g., Traefik) which routes to backend services |
+| A | `<machine-name>.<wan-domain>` | WAN IP | Public IP address (before router NAT). Used for dyndns-style CNAME records. Typically points to a reverse proxy which routes to backend services |
 | A | `<machine-name>.<lan-domain>` | LAN IP | Private IP address (private IP ranges, matches LAN_CIDR_RANGES) |
 
 Each A record includes an ownership comment for tracking and validation.
@@ -82,7 +81,7 @@ DNS records use Cloudflare's comment field for ownership tracking:
 The worker extracts IP addresses from Tailscale device endpoints. Only **LAN IPs** are classified based on CIDR ranges configured via the `LAN_CIDR_RANGES` environment variable (required, no defaults).
 
 **Note**: 
-- **WAN IPs** are any IPs that are not classified as LAN (no explicit classification needed). These are public IP addresses (before router NAT) and are typically used for dyndns-style CNAME records pointing to reverse proxies (e.g., Traefik) rather than direct service connections
+- **WAN IPs** are any IPs that are not classified as LAN (no explicit classification needed). These are public IP addresses (before router NAT) and are typically used for dyndns-style CNAME records pointing to reverse proxies rather than direct service connections
 - **Tailscale IPs** are returned directly from the Tailscale API and do not require classification
 
 ### WAN IP Explanation
@@ -98,7 +97,7 @@ The worker extracts IP addresses from Tailscale device endpoints. Only **LAN IPs
 **Typical usage pattern:**
 1. WAN domain records (e.g., `server1.wan.example.com`) point to the public IP
 2. Custom domains create CNAME records pointing to WAN domain records
-3. Traffic flows: Client → Custom Domain (CNAME) → WAN Domain (A Record) → Public IP → Reverse Proxy (e.g., Traefik) → Backend Services via Tailscale
+3. Traffic flows: Client → Custom Domain (CNAME) → WAN Domain (A Record) → Public IP → Reverse Proxy → Backend Services via Tailscale
 
 This eliminates the need for separate dynamic DNS software, as the cloudflare-tailscale-dns service automatically updates WAN domain records when Tailscale detects IP changes.
 
@@ -135,43 +134,38 @@ docker run -it --rm -v $(pwd):/workspace cloudflare-worker-dns
 
 The devcontainer automatically runs `npm install && npm run cf-typegen` on startup.
 
-### 2. Configure Environment Variables
+### 2. Configure Cloudflare KV Namespace
 
-**Configure environment variables via Cloudflare Dashboard:**
+The worker uses Cloudflare KV to store all configuration settings. You need to create a KV namespace and bind it to your worker.
+
+**Option 1: Using Wrangler CLI (Recommended for Development)**
+
+1. Create a KV namespace:
+   ```bash
+   wrangler kv:namespace create "CONFIG_KV"
+   ```
+
+2. Copy the namespace ID from the output and add it to `wrangler.jsonc`:
+   ```jsonc
+   "kv_namespaces": [
+     {
+       "binding": "CONFIG_KV",
+       "id": "your-namespace-id-here"
+     }
+   ]
+   ```
+
+**Option 2: Using Cloudflare Dashboard**
 
 1. Go to [Cloudflare Dashboard](https://dash.cloudflare.com)
-2. Navigate to **Workers & Pages** → Your Worker → **Settings** → **Variables**
-3. Configure the following:
+2. Navigate to **Workers & Pages** → **KV**
+3. Click **Create a namespace**
+4. Name it (e.g., `tailscale-config-kv`) and create it
+5. Go to **Workers & Pages** → Your Worker → **Settings** → **Variables**
+6. Scroll to **KV Namespace Bindings** and click **Add binding**
+7. Set **Variable name** to `CONFIG_KV` and select your namespace
 
-**Environment Variables and Secrets:**
-
-| Name | Type | Required | Description | Example/Format/Default |
-|------|------|----------|-------------|------------------------|
-| `TAILSCALE_TAILNET` | Variable | Yes | Your Tailscale tailnet identifier (e.g., "example.tailscale.com" or just "example") | `example.tailscale.com` |
-| `CLOUDFLARE_ZONE_ID` | Variable | Yes | Get from: Cloudflare Dashboard → Your Zone → Overview → Zone ID | `abc123def456` |
-| `DOMAIN_FOR_TAILSCALE_ENDPOINT` | Variable | Yes | Domain/subdomain where Tailscale IP records will be created (e.g., "ts.example.com" or "ts" if using root domain) | `ts.example.com` |
-| `DOMAIN_FOR_WAN_ENDPOINT` | Variable | Yes | Domain/subdomain where WAN (public IP) records will be created (e.g., "wan.example.com" or "wan" if using root domain) | `wan.example.com` |
-| `DOMAIN_FOR_LAN_ENDPOINT` | Variable | Yes | Domain/subdomain where LAN (private IP) records will be created (e.g., "lan.example.com" or "lan" if using root domain) | `lan.example.com` |
-| `LAN_CIDR_RANGES` | Variable | Yes | Comma-separated list of CIDR ranges for Private-Use Networks [RFC1918] to classify as LAN (private) IPs. Used to identify private IP addresses that should not be proxied through Cloudflare. **Order matters**: When a device has multiple endpoints matching different ranges, the endpoint matching the first range in the list is chosen as the LAN IP. Common ranges: 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 | `10.0.0.0/8,172.16.0.0/12,192.168.0.0/16` |
-| `TAILSCALE_TAG_FILTER_REGEX` | Variable | Yes | Regular expression pattern to filter Tailscale devices by tags. Only devices with at least one tag matching this regex will be synced to DNS. Examples: "^tag:dns" (matches tags starting with "tag:dns"), "tag:server\|tag:production" (matches either tag), "tag:.*-dns" (matches tags ending in "-dns") | `^tag:dns` |
-| `TAILSCALE_TAG_PROXY_REGEX` | Variable | Yes | Regular expression pattern to enable Cloudflare proxy (orange cloud) for WAN domain records. Only WAN domain records (public IPs) can be proxied - TS and LAN domains are always DNS-only. Devices with at least one tag matching this regex will have their WAN DNS records proxied through Cloudflare. Examples: "^tag:proxy" (matches tags starting with "tag:proxy"), "tag:public\|tag:web" (matches either tag) | `^tag:proxy` |
-| `TAILSCALE_API_KEY` | Secret | Yes | Get from: https://login.tailscale.com/admin/settings/keys. Generate an API key with device read permissions | Starts with `tskey-api-` |
-| `CLOUDFLARE_API_TOKEN` | Secret | Yes | Get from: https://dash.cloudflare.com/profile/api-tokens. Create token with: Zone → DNS → Edit permissions | Minimum 40 characters |
-| `DNS_RECORD_OWNER_ID` | Variable | No | Unique identifier for DNS record ownership. Only set if multiple instances manage the same DNS zone | `cloudflare-tailscale-dns` |
-| `TAILSCALE_WEBHOOK_SECRET` | Secret | No | Secret for validating webhook signatures. Get from: Tailscale Admin Console → Settings → Webhooks. Only required if you want to validate webhook signatures | - |
-
-
-### 3. Configure Tailscale Webhook (Optional but Recommended)
-
-| Step | Action | Details |
-|------|--------|---------|
-| 1 | Navigate to Tailscale Admin Console | Go to [Settings → Webhooks](https://login.tailscale.com/admin/settings/webhooks) |
-| 2 | Add Webhook | Click **Add Webhook** |
-| 3 | Set Webhook URL | `https://your-worker-name.your-subdomain.workers.dev/webhook` |
-| 4 | Select Events | Choose: `nodeAdded`, `nodeDeleted`, `nodeUpdated` |
-| 5 | Configure Secret | Copy the webhook secret and set it in Cloudflare Dashboard: **Workers & Pages** → Your Worker → **Settings** → **Variables** → **Secrets** → Add `TAILSCALE_WEBHOOK_SECRET` |
-
-### 4. Deploy Worker
+### 3. Deploy Worker
 
 ```bash
 npm run deploy
@@ -179,7 +173,57 @@ npm run deploy
 
 After deployment, note your worker URL (e.g., `https://cloudflare-tailscale-dns.your-subdomain.workers.dev`)
 
-### 5. Verify Cron Trigger
+### 4. Configure Settings via Web UI
+
+After deployment, navigate to `https://your-worker-name.your-subdomain.workers.dev/config` to configure all settings through the web interface. The configuration page includes detailed instructions and validation for each setting.
+
+**Optional Environment Variable:**
+
+You can optionally set `DNS_RECORD_OWNER_ID` as an environment variable in the Cloudflare Dashboard if you need multiple instances managing the same DNS zone:
+
+1. Go to **Workers & Pages** → Your Worker → **Settings** → **Variables**
+2. Add `DNS_RECORD_OWNER_ID` with a unique identifier (default: `cloudflare-tailscale-dns`)
+
+
+### 5. Configure Tailscale Webhook (Optional but Recommended)
+
+**Automated Setup (Recommended):**
+
+The worker can automatically create and manage Tailscale webhooks. The webhook URL is automatically detected from requests and stored in KV.
+
+1. **Deploy Worker**: Deploy your worker first (see step 3 above)
+
+2. **Configure Settings**: Configure your settings via the `/config` UI (see step 4 above)
+
+3. **Trigger Webhook Setup**: Visit `GET /webhook` endpoint:
+   ```bash
+   curl https://your-worker-name.your-subdomain.workers.dev/webhook
+   ```
+   
+   This will:
+   - Extract the webhook URL from the request
+   - Store it in Cloudflare KV
+   - Create/update the Tailscale webhook automatically
+   - Perform a full DNS sync
+   - Return the webhook setup status and sync results
+
+4. **Automatic Secret Storage**: The webhook secret is automatically stored in Cloudflare KV when the webhook is created. No manual configuration needed!
+
+5. **Cron Job Verification**: The hourly cron job will automatically verify and update the webhook configuration using the stored URL and secret from KV.
+
+**Note**: The automated setup requires your Tailscale API key to have `webhooks` OAuth scope. Most API keys with device read permissions also have webhook permissions. If webhook creation fails, check your API key permissions in the Tailscale Admin Console.
+
+### 6. Deploy Worker
+
+```bash
+npm run deploy
+```
+
+After deployment, note your worker URL (e.g., `https://cloudflare-tailscale-dns.your-subdomain.workers.dev`)
+
+**Important**: After deployment, configure settings via `/config` and visit `GET /webhook` to set up the webhook URL and trigger the first sync (see steps 4-5 above).
+
+### 7. Verify Cron Trigger
 
 1. Go to [Cloudflare Dashboard](https://dash.cloudflare.com)
 2. Navigate to **Workers & Pages → Your Worker → Triggers**

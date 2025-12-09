@@ -1,0 +1,129 @@
+import { z } from 'zod'
+import { createLogger } from './logger'
+import { ConfigurationError } from './errors'
+import { settingsSchema, Settings, ParsedSettings } from '../types/settings'
+
+const logger = createLogger()
+
+
+/**
+ * Get the settings key for a given owner ID
+ */
+function getSettingsKey(ownerId: string): string {
+	return `${ownerId}/settings`
+}
+
+/**
+ * Get all settings from KV
+ */
+export async function getSettings(kv: KVNamespace, ownerId: string): Promise<Partial<Settings>> {
+	try {
+		const key = getSettingsKey(ownerId)
+		const data = await kv.get(key)
+		if (data) {
+			const settings = JSON.parse(data) as Settings
+			logger.debug(`Retrieved settings from KV for owner: ${ownerId}`)
+			return settings
+		}
+		return {}
+	} catch (error) {
+		logger.error(`Error retrieving settings from KV for owner ${ownerId}:`, error)
+		return {}
+	}
+}
+
+/**
+ * Validate settings and return parsed object with RegExp instances
+ */
+export function validateSettings(settings: unknown): ParsedSettings {
+	try {
+		const parsed = settingsSchema.parse(settings)
+		return {
+			...parsed,
+			TAILSCALE_TAG_LAN_REGEX: new RegExp(parsed.TAILSCALE_TAG_LAN_REGEX),
+			TAILSCALE_TAG_TAILSCALE_REGEX: new RegExp(parsed.TAILSCALE_TAG_TAILSCALE_REGEX),
+			TAILSCALE_TAG_WAN_NO_PROXY_REGEX: new RegExp(parsed.TAILSCALE_TAG_WAN_NO_PROXY_REGEX),
+			TAILSCALE_TAG_WAN_PROXY_REGEX: new RegExp(parsed.TAILSCALE_TAG_WAN_PROXY_REGEX),
+			// LAN_CIDR_RANGES is already array of strings from schema preprocess
+			LAN_CIDR_RANGES: parsed.LAN_CIDR_RANGES
+		}
+	} catch (error) {
+		if (error instanceof z.ZodError) {
+			const errors = error.issues.map((issue) => {
+				const path = issue.path.join('.')
+				return `${path}: ${issue.message}`
+			}).join('\n')
+			const validationError = new ConfigurationError(`Settings validation failed:\n${errors}`)
+			logger.error('Settings validation failed:', validationError)
+			throw validationError
+		}
+		throw error
+	}
+}
+
+/**
+ * Store all settings in KV
+ */
+export async function storeSettings(kv: KVNamespace, ownerId: string, settings: Partial<Settings>): Promise<void> {
+	try {
+		const key = getSettingsKey(ownerId)
+		const data = JSON.stringify(settings)
+		await kv.put(key, data)
+		logger.info(`Stored settings in KV for owner: ${ownerId}`)
+	} catch (error) {
+		logger.error(`Error storing settings in KV for owner ${ownerId}:`, error)
+		throw error
+	}
+}
+
+/**
+ * Update specific setting fields in KV (merges with existing settings)
+ */
+export async function updateSettings(
+	kv: KVNamespace,
+	ownerId: string,
+	updates: Partial<Settings>
+): Promise<void> {
+	try {
+		// Get existing settings
+		const existing = await getSettings(kv, ownerId)
+
+		// Merge with updates
+		const merged: Partial<Settings> = {
+			...existing,
+			...updates,
+		}
+
+		// Store merged settings
+		await storeSettings(kv, ownerId, merged)
+		logger.debug(`Updated settings in KV for owner: ${ownerId}`, updates)
+	} catch (error) {
+		logger.error(`Error updating settings in KV for owner ${ownerId}:`, error)
+		throw error
+	}
+}
+
+/**
+ * Get a specific setting field from KV
+ */
+export async function getSetting<K extends keyof Settings>(
+	kv: KVNamespace,
+	ownerId: string,
+	key: K
+): Promise<Settings[K] | null> {
+	const settings = await getSettings(kv, ownerId)
+	return settings[key] ?? null
+}
+
+/**
+ * Set a specific setting field in KV
+ */
+export async function setSetting<K extends keyof Settings>(
+	kv: KVNamespace,
+	ownerId: string,
+	key: K,
+	value: Settings[K]
+): Promise<void> {
+	await updateSettings(kv, ownerId, { [key]: value } as Partial<Settings>)
+}
+

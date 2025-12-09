@@ -205,8 +205,10 @@ describe('TailscaleMachineSyncService', () => {
 		wanDomain: 'wan.example.com',
 		lanDomain: 'lan.example.com',
 		ownerId: 'test-owner',
-		tagFilterRegex: /^tag:dns/,
-		proxyTagRegex: /^tag:proxy/,
+		lanTagRegex: /^tag:lan/,
+		tailscaleTagRegex: /^tag:ts/,
+		wanNoProxyTagRegex: /^tag:wan/,
+		wanProxyTagRegex: /^tag:proxy/,
 		lanCidrRanges: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'],
 	}
 
@@ -234,8 +236,10 @@ describe('TailscaleMachineSyncService', () => {
 				wanDomain: 'wan.test.com',
 				lanDomain: 'lan.test.com',
 				ownerId: 'owner-123',
-				tagFilterRegex: /^tag:dns/,
-				proxyTagRegex: /^tag:proxy/,
+				lanTagRegex: /^tag:lan/,
+				tailscaleTagRegex: /^tag:ts/,
+				wanNoProxyTagRegex: /^tag:wan/,
+				wanProxyTagRegex: /^tag:proxy/,
 				lanCidrRanges: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'],
 			})
 
@@ -246,7 +250,7 @@ describe('TailscaleMachineSyncService', () => {
 			const devices: TailscaleDevice[] = [{
 				id: 'device-1',
 				name: 'machine1',
-				tags: ['tag:dns'],
+				tags: ['tag:lan', 'tag:ts', 'tag:wan', 'tag:proxy'],
 				addresses: ['100.1.2.3'],
 				clientConnectivity: {
 					endpoints: ['192.168.1.10:41641', '203.0.113.5:41641'],
@@ -285,7 +289,7 @@ describe('TailscaleMachineSyncService', () => {
 			const devices: TailscaleDevice[] = [{
 				id: 'device-1',
 				name: 'machine1',
-				tags: ['tag:dns'],
+				tags: ['tag:lan', 'tag:ts', 'tag:wan', 'tag:proxy'],
 				addresses: ['100.1.2.3'],
 			}]
 
@@ -304,7 +308,7 @@ describe('TailscaleMachineSyncService', () => {
 			const devices: TailscaleDevice[] = [{
 				id: 'device-1',
 				name: 'machine1',
-				tags: ['tag:dns'],
+				tags: ['tag:lan', 'tag:ts', 'tag:wan', 'tag:proxy'],
 				addresses: ['100.1.2.3'],
 				clientConnectivity: {
 					endpoints: ['203.0.113.5:41641', '203.0.113.6:41641', '203.0.113.7:41641'],
@@ -328,13 +332,13 @@ describe('TailscaleMachineSyncService', () => {
 				{
 					id: 'device-1',
 					name: 'machine1',
-					tags: ['tag:dns'],
+					tags: ['tag:lan', 'tag:ts', 'tag:wan', 'tag:proxy'],
 					addresses: ['100.1.2.3'],
 				},
 				{
 					id: 'device-2',
 					name: 'machine2',
-					tags: ['tag:dns'],
+					tags: ['tag:lan', 'tag:ts', 'tag:wan', 'tag:proxy'],
 					addresses: ['100.1.2.4'],
 					clientConnectivity: {
 						endpoints: ['192.168.1.10:41641'],
@@ -366,7 +370,7 @@ describe('TailscaleMachineSyncService', () => {
 				{
 					id: 'device-1',
 					name: 'machine1',
-					tags: ['tag:dns'],
+					tags: ['tag:lan', 'tag:ts', 'tag:wan', 'tag:proxy'],
 					addresses: ['100.1.2.3'],
 				},
 				{
@@ -441,7 +445,7 @@ describe('TailscaleMachineSyncService', () => {
 				{
 					id: 'device-1',
 					name: 'machine1',
-					tags: ['tag:dns'],
+					tags: ['tag:lan', 'tag:ts', 'tag:wan', 'tag:proxy'],
 					addresses: ['100.1.2.3'],
 					clientConnectivity: {
 						endpoints: ['192.168.1.10:41641', '203.0.113.5:41641', '203.0.113.6:41641'],
@@ -450,7 +454,7 @@ describe('TailscaleMachineSyncService', () => {
 				{
 					id: 'device-2',
 					name: 'machine2-hostname',
-					tags: ['tag:dns'],
+					tags: ['tag:lan', 'tag:ts', 'tag:wan', 'tag:proxy'],
 					addresses: ['100.1.2.4'],
 					clientConnectivity: {
 						endpoints: ['10.0.0.5:41641'],
@@ -486,7 +490,7 @@ describe('TailscaleMachineSyncService', () => {
 			const devices: TailscaleDevice[] = [{
 				id: 'device-1',
 				name: 'machine1',
-				tags: ['tag:dns'],
+				tags: ['tag:lan', 'tag:ts', 'tag:wan', 'tag:proxy'],
 				addresses: ['100.1.2.3'],
 			}]
 
@@ -525,7 +529,7 @@ describe('TailscaleMachineSyncService', () => {
 			const devices: TailscaleDevice[] = [{
 				id: 'device-1',
 				name: 'machine1',
-				tags: ['tag:dns'],
+				tags: ['tag:lan', 'tag:ts', 'tag:wan', 'tag:proxy'],
 				addresses: ['100.1.2.3'],
 			}]
 
@@ -551,7 +555,7 @@ describe('TailscaleMachineSyncService', () => {
 			const devices: TailscaleDevice[] = [{
 				id: 'device-1',
 				name: 'machine1',
-				tags: ['tag:dns'],
+				tags: ['tag:lan', 'tag:ts', 'tag:wan', 'tag:proxy'],
 				addresses: ['100.1.2.3'],
 			}]
 
@@ -596,7 +600,7 @@ describe('TailscaleMachineSyncService', () => {
 			const devices: TailscaleDevice[] = [{
 				id: 'device-1',
 				name: 'machine1',
-				tags: ['tag:dns'],
+				tags: ['tag:lan', 'tag:ts', 'tag:wan', 'tag:proxy'],
 				// No addresses or endpoints - will result in empty classification
 			}]
 
@@ -614,7 +618,7 @@ describe('TailscaleMachineSyncService', () => {
 			let device1: TailscaleDevice = {
 				id: 'device-1',
 				name: 'machine1',
-				tags: ['tag:dns'],
+				tags: ['tag:lan', 'tag:ts', 'tag:wan', 'tag:proxy'],
 				addresses: ['100.1.2.3'],
 				clientConnectivity: {
 					endpoints: ['192.168.1.10:41641', '203.0.113.5:41641'],
@@ -624,7 +628,7 @@ describe('TailscaleMachineSyncService', () => {
 			let device2: TailscaleDevice = {
 				id: 'device-2',
 				name: 'machine2',
-				tags: ['tag:dns'],
+				tags: ['tag:lan', 'tag:ts', 'tag:wan', 'tag:proxy'],
 				addresses: ['100.1.2.4'],
 				clientConnectivity: {
 					endpoints: ['192.168.1.20:41641'],
@@ -732,7 +736,7 @@ describe('TailscaleMachineSyncService', () => {
 			const devices: TailscaleDevice[] = [{
 				id: 'device-1',
 				name: 'machine1',
-				tags: ['tag:dns'],
+				tags: ['tag:lan', 'tag:ts', 'tag:wan', 'tag:proxy'],
 				addresses: ['100.1.2.3'],
 				clientConnectivity: {
 					endpoints: ['192.168.1.10:41641', '203.0.113.5:41641'],
@@ -787,7 +791,7 @@ describe('TailscaleMachineSyncService', () => {
 			const devices: TailscaleDevice[] = [{
 				id: 'device-1',
 				name: 'machine1',
-				tags: ['tag:dns'],
+				tags: ['tag:lan', 'tag:ts', 'tag:wan', 'tag:proxy'],
 				addresses: ['100.1.2.3'],
 				clientConnectivity: {
 					endpoints: ['10.42.0.0:41641', '192.168.1.10:41641'], // Both are LAN IPs
@@ -823,7 +827,7 @@ describe('TailscaleMachineSyncService', () => {
 			const devices: TailscaleDevice[] = [{
 				id: 'device-1',
 				name: 'machine1',
-				tags: ['tag:dns', 'tag:proxy'], // Has proxy tag
+				tags: ['tag:lan', 'tag:ts', 'tag:proxy'], // Has proxy tag
 				addresses: ['100.1.2.3'],
 				clientConnectivity: {
 					endpoints: ['10.42.0.0:41641'], // LAN IP
@@ -866,7 +870,7 @@ describe('TailscaleMachineSyncService', () => {
 			const devices: TailscaleDevice[] = [{
 				id: 'device-1',
 				name: 'machine1',
-				tags: ['tag:dns', 'tag:proxy'], // Has proxy tag
+				tags: ['tag:lan', 'tag:ts', 'tag:proxy'], // Has proxy tag
 				addresses: ['100.1.2.3'],
 				clientConnectivity: {
 					endpoints: ['203.0.113.5:41641'], // WAN IP
@@ -954,7 +958,7 @@ describe('TailscaleMachineSyncService', () => {
 			const device: TailscaleDevice = {
 				id: 'device-1',
 				name: 'machine1',
-				tags: ['tag:dns'],
+				tags: ['tag:lan', 'tag:ts', 'tag:wan', 'tag:proxy'],
 				clientConnectivity: {
 					endpoints: ['10.42.0.0:41641'],
 				},
@@ -971,8 +975,10 @@ describe('TailscaleMachineSyncService', () => {
 				wanDomain: 'wan.example.com',
 				lanDomain: 'lan.example.com',
 				ownerId: 'test-owner',
-				tagFilterRegex: /^tag:dns/,
-				proxyTagRegex: /^tag:proxy/,
+				lanTagRegex: /^tag:lan/,
+				tailscaleTagRegex: /^tag:ts/,
+				wanNoProxyTagRegex: /^tag:wan/,
+				wanProxyTagRegex: /^tag:proxy/,
 				lanCidrRanges: [],
 			})
 
@@ -984,7 +990,7 @@ describe('TailscaleMachineSyncService', () => {
 			const devices: TailscaleDevice[] = [{
 				id: 'device-1',
 				name: 'machine1',
-				tags: ['tag:dns'],
+				tags: ['tag:lan', 'tag:ts', 'tag:wan', 'tag:proxy'],
 				addresses: ['100.1.2.3'],
 				clientConnectivity: {
 					endpoints: ['10.42.0.0:41641', '203.0.113.5:41641'],
@@ -1001,8 +1007,10 @@ describe('TailscaleMachineSyncService', () => {
 				wanDomain: '', // Empty WAN domain
 				lanDomain: 'lan.example.com',
 				ownerId: 'test-owner',
-				tagFilterRegex: /^tag:dns/,
-				proxyTagRegex: /^tag:proxy/,
+				lanTagRegex: /^tag:lan/,
+				tailscaleTagRegex: /^tag:ts/,
+				wanNoProxyTagRegex: /^tag:wan/,
+				wanProxyTagRegex: /^tag:proxy/,
 				lanCidrRanges: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'],
 			})
 
@@ -1028,7 +1036,7 @@ describe('TailscaleMachineSyncService', () => {
 			const devices: TailscaleDevice[] = [{
 				id: 'device-1',
 				name: 'machine1',
-				tags: ['tag:dns'],
+				tags: ['tag:lan', 'tag:ts', 'tag:wan', 'tag:proxy'],
 				addresses: ['100.1.2.3'],
 				clientConnectivity: {
 					endpoints: ['10.42.0.0:41641', '203.0.113.5:41641'],
@@ -1045,8 +1053,10 @@ describe('TailscaleMachineSyncService', () => {
 				wanDomain: '', // Empty
 				lanDomain: '', // Empty
 				ownerId: 'test-owner',
-				tagFilterRegex: /^tag:dns/,
-				proxyTagRegex: /^tag:proxy/,
+				lanTagRegex: /^tag:lan/,
+				tailscaleTagRegex: /^tag:ts/,
+				wanNoProxyTagRegex: /^tag:wan/,
+				wanProxyTagRegex: /^tag:proxy/,
 				lanCidrRanges: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'],
 			})
 

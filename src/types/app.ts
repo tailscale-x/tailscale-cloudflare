@@ -1,5 +1,5 @@
 import type { Env } from './env'
-import type { EnvValidationVariables } from '../middleware/env-validation'
+import type { SettingsVariables } from '../middleware/settings'
 
 /**
  * Base app context type with Bindings
@@ -22,7 +22,7 @@ type BaseAppContext = {
  * 3. Add it to the intersection:
  *    type AppVariables = EnvValidationVariables & MyMiddlewareVariables
  */
-type AppVariables = EnvValidationVariables
+type AppVariables = SettingsVariables
 
 /**
  * Complete Hono app context type

@@ -1,19 +1,37 @@
+import { z } from 'zod'
+
 /**
  * Environment variables interface for Cloudflare Workers
+ * Only contains bindings and variables required to bootstrap configuration
  */
 export interface Env {
-	TAILSCALE_API_KEY: string
-	TAILSCALE_TAILNET: string
-	CLOUDFLARE_API_TOKEN: string
-	CLOUDFLARE_ZONE_ID: string
-	DOMAIN_FOR_TAILSCALE_ENDPOINT: string
-	DOMAIN_FOR_WAN_ENDPOINT: string
-	DOMAIN_FOR_LAN_ENDPOINT: string
-	LAN_CIDR_RANGES: string
-	TAILSCALE_WEBHOOK_SECRET?: string
+	// Runtime bindings
+	CONFIG_KV: KVNamespace
+
+	// Bootstrap configuration
 	DNS_RECORD_OWNER_ID?: string
-	TAILSCALE_TAG_FILTER_REGEX: string
-	TAILSCALE_TAG_PROXY_REGEX: string
-	CONFIG_SSE_INTERVAL_MS?: string
+
+	// Keep LOG_LEVEL in Env for startup logging before settings are loaded
 	LOG_LEVEL?: string
 }
+
+export const envSchema = z.object({
+	CONFIG_KV: z.custom<KVNamespace>((val) => val !== undefined && val !== null, "CONFIG_KV is required"),
+	DNS_RECORD_OWNER_ID: z.string().optional(),
+	LOG_LEVEL: z.preprocess(
+		(val) => (typeof val === 'string' && val.trim() === '' ? undefined : val),
+		z
+			.string()
+			.optional()
+			.refine(
+				(val) => {
+					if (!val) return true
+					const upper = val.toUpperCase()
+					return ['DEBUG', 'INFO', 'WARN', 'ERROR'].includes(upper)
+				},
+				{
+					message: 'LOG_LEVEL must be one of: DEBUG, INFO, WARN, ERROR',
+				}
+			)
+	)
+})
