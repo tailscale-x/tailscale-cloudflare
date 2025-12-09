@@ -10,10 +10,13 @@ RUN --mount=type=cache,id=apt,target=/var/cache/apt/archives apt-get update && \
     openssh-client \
     zsh \
     nano \
+    wget \
     vim \
+    ca-certificates \
     neovim \
     tmux \
-    build-essential
+    build-essential \
+    procps
 
 WORKDIR /workspace
 
