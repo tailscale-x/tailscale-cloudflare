@@ -1,23 +1,16 @@
-ARG NODE_VERSION=24
-FROM node:${NODE_VERSION}-trixie-slim AS devcontainer
+FROM mcr.microsoft.com/devcontainers/base:ubuntu
 
 
-RUN --mount=type=cache,id=apt,target=/var/cache/apt/archives apt-get update && \
-    apt-get install -y --no-install-recommends \
-    git \
-    curl \
-    bash \
-    openssh-client \
-    zsh \
-    nano \
-    wget \
-    vim \
-    ca-certificates \
-    neovim \
-    tmux \
-    build-essential \
-    procps
+RUN --mount=type=cache,id=apt-cache,target=/var/cache/apt/archives \
+    --mount=type=cache,id=apt-lists,target=/var/lib/apt/lists \
+    apt-get update && \
+    apt-get install --no-install-recommends -y \
+        net-tools \
+        iputils-ping \
+        dnsutils \
+        xdg-utils \
+        build-essential
 
-WORKDIR /workspace
+USER vscode
 
-CMD ["sh", "-c", "sleep infinity"]
+ENV PATH=${PATH}:/home/vscode/.local/bin:/home/linuxbrew/.linuxbrew/bin/

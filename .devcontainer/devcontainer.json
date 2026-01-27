@@ -1,14 +1,55 @@
 {
-    "name": "tailscale-cloudflare",
-    "dockerFile": "Dockerfile",
-    "context": "..",
+    "name": "dlkn-dev devcontainer",
+    "build": {
+        "context": ".",
+        "dockerfile": "Dockerfile"
+    },
     "mounts": [
-        "source=${localWorkspaceFolder},target=/workspace,type=bind",
-        "source=${localEnv:HOME}/.wrangler,target=/home/node/.wrangler,type=bind",
-        "source=${localEnv:HOME}/.gitconfig,target=/home/node/.gitconfig,type=bind"
+        "source=${localEnv:HOME}/.wrangler,target=/home/vscode/.wrangler,type=bind",
+        "source=${localEnv:HOME}/.gitconfig,target=/home/vscode/.gitconfig,type=bind"
+        "source=cursor-config,target=/home/vscode/.cursor,type=volume",
+        "source=claude-config,target=/home/vscode/.claude,type=volume",
+        "source=aws-config,target=/home/vscode/.aws,type=volume",
+        "source=pip-cache,target=/home/vscode/.cache/pip,type=volume",
+        "source=uv-cache,target=/home/vscode/.cache/uv,type=volume",
+        "source=pnpm-store,target=/home/vscode/.local/share/pnpm/store,type=volume",
+        "source=yarn-cache,target=/home/vscode/.cache/yarn,type=volume",
+        "source=npm-cache,target=/home/vscode/.npm,type=volume",
+        "source=apt-cache,target=/var/cache/apt/archives,type=volume",
+        "source=apt-lists,target=/var/lib/apt/lists,type=volume",
+        "source=brew-cache,target=/home/vscode/.cache/Homebrew,type=volume",
+        "source=uv-cache,target=/home/vscode/.cache/uv,type=volume"
     ],
-    "initializeCommand": "mkdir -p ${HOME}/.wrangler",
-    "updateRemoteUserUID": true,
-    "postStartCommand": "npm install && npm run cf-typegen",
-    "shutdownAction": "stopContainer"
+    "postCreateCommand": "./.devcontainer/postCreate.sh",
+    "shutdownAction": "stopContainer",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-python.python",
+                "ms-python.black-formatter",
+                "ms-python.isort",
+                "ms-toolsai.jupyter",
+                "ms-vscode.vscode-json",
+                "ms-vscode.vscode-typescript-next",
+                "esbenp.prettier-vscode",
+                "ms-azuretools.vscode-docker",
+                "opentofu.vscode-opentofu",
+                "GitLab.gitlab-workflow",
+                "amazonwebservices.aws-toolkit-vscode",
+                "bradlc.vscode-tailwindcss",
+                "formulahendry.auto-rename-tag",
+                "christian-kohler.path-intellisense",
+                "dbaeumer.vscode-eslint",
+                "redhat.ansible",
+                "Anthropic.claude-code"
+            ],
+            "settings": {
+                "cursor.terminal.useSandbox": false,
+                "editor.formatOnSave": true,
+                "editor.defaultFormatter": "esbenp.prettier-vscode",
+                "typescript.preferences.importModuleSpecifier": "relative"
+            }
+        }
+    },
+    "updateRemoteUserUID": true
 }
