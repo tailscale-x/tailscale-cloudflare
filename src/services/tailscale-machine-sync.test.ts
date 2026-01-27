@@ -78,7 +78,7 @@ class MockCloudflareClient implements Partial<CloudflareClient> {
 
 	// Batch delete and create (atomic operation)
 	async batchDeleteAndCreate(
-		recordIdsToDelete: string[],
+		recordsToDelete: RecordResponse[],
 		recordsToCreate: ARecordParam[]
 	): Promise<void> {
 		if (this.errorState && this.errorMethod === 'batchDeleteAndCreate') {
@@ -86,8 +86,10 @@ class MockCloudflareClient implements Partial<CloudflareClient> {
 		}
 
 		// Delete records
-		for (const id of recordIdsToDelete) {
-			this.records.delete(id)
+		for (const record of recordsToDelete) {
+			if (record.id) {
+				this.records.delete(record.id)
+			}
 		}
 
 		// Create records - convert params to RecordResponse format
@@ -111,13 +113,15 @@ class MockCloudflareClient implements Partial<CloudflareClient> {
 	}
 
 	// Batch delete records
-	async batchDeleteRecords(recordIds: string[]): Promise<void> {
+	async batchDeleteRecords(records: RecordResponse[]): Promise<void> {
 		if (this.errorState && this.errorMethod === 'batchDeleteRecords') {
 			throw this.errorState
 		}
 
-		for (const id of recordIds) {
-			this.records.delete(id)
+		for (const record of records) {
+			if (record.id) {
+				this.records.delete(record.id)
+			}
 		}
 	}
 }
@@ -201,26 +205,32 @@ describe('TailscaleMachineSyncService', () => {
 	let tailscaleMachineSyncService: TailscaleMachineSyncService
 
 	const defaultConfig = {
-		tsDomain: 'ts.example.com',
-		wanDomain: 'wan.example.com',
-		lanDomain: 'lan.example.com',
+		DOMAIN_FOR_TAILSCALE_ENDPOINT: 'ts.example.com',
+		DOMAIN_FOR_WAN_ENDPOINT: 'wan.example.com',
+		DOMAIN_FOR_LAN_ENDPOINT: 'lan.example.com',
 		ownerId: 'test-owner',
-		lanTagRegex: /^tag:lan/,
-		tailscaleTagRegex: /^tag:ts/,
-		wanNoProxyTagRegex: /^tag:wan/,
-		wanProxyTagRegex: /^tag:proxy/,
-		lanCidrRanges: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'],
+		TAILSCALE_TAG_LAN_REGEX: /^tag:lan/,
+		TAILSCALE_TAG_TAILSCALE_REGEX: /^tag:ts/,
+		TAILSCALE_TAG_WAN_NO_PROXY_REGEX: /^tag:wan/,
+		TAILSCALE_TAG_WAN_PROXY_REGEX: /^tag:proxy/,
+		LAN_CIDR_RANGES: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'],
+		TAILSCALE_API_KEY: 'tskey-api-test',
+		TAILSCALE_TAILNET: 'test.net',
+		CLOUDFLARE_API_TOKEN: 'test-cloudflare-token-which-is-long-enough-for-validation-40-chars',
 	}
 
 	beforeEach(() => {
-		mockTailscaleClient = new MockTailscaleClient(defaultConfig.lanCidrRanges)
+		mockTailscaleClient = new MockTailscaleClient(defaultConfig.LAN_CIDR_RANGES)
 		mockCloudflareClient = new MockCloudflareClient()
-		
-		tailscaleMachineSyncService = new TailscaleMachineSyncService({
-			tailscaleClient: mockTailscaleClient as any,
-			cloudflareClient: mockCloudflareClient as any,
-			...defaultConfig,
-		})
+
+		tailscaleMachineSyncService = new TailscaleMachineSyncService(
+			defaultConfig as any,
+			defaultConfig.ownerId,
+			{
+				tailscaleClient: mockTailscaleClient as any,
+				cloudflareClient: mockCloudflareClient as any,
+			}
+		)
 
 		// Reset all state
 		mockTailscaleClient.reset()
@@ -229,19 +239,23 @@ describe('TailscaleMachineSyncService', () => {
 
 	describe('Constructor', () => {
 		it('should initialize with provided configuration', () => {
-			const service = new TailscaleMachineSyncService({
-				tailscaleClient: mockTailscaleClient as any,
-				cloudflareClient: mockCloudflareClient as any,
-				tsDomain: 'ts.test.com',
-				wanDomain: 'wan.test.com',
-				lanDomain: 'lan.test.com',
-				ownerId: 'owner-123',
-				lanTagRegex: /^tag:lan/,
-				tailscaleTagRegex: /^tag:ts/,
-				wanNoProxyTagRegex: /^tag:wan/,
-				wanProxyTagRegex: /^tag:proxy/,
-				lanCidrRanges: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'],
-			})
+			const service = new TailscaleMachineSyncService(
+				{
+					DOMAIN_FOR_TAILSCALE_ENDPOINT: 'ts.test.com',
+					DOMAIN_FOR_WAN_ENDPOINT: 'wan.test.com',
+					DOMAIN_FOR_LAN_ENDPOINT: 'lan.test.com',
+					TAILSCALE_TAG_LAN_REGEX: /^tag:lan/,
+					TAILSCALE_TAG_TAILSCALE_REGEX: /^tag:ts/,
+					TAILSCALE_TAG_WAN_NO_PROXY_REGEX: /^tag:wan/,
+					TAILSCALE_TAG_WAN_PROXY_REGEX: /^tag:proxy/,
+					LAN_CIDR_RANGES: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'],
+				} as any,
+				'owner-123',
+				{
+					tailscaleClient: mockTailscaleClient as any,
+					cloudflareClient: mockCloudflareClient as any,
+				}
+			)
 
 			expect(service).toBeInstanceOf(TailscaleMachineSyncService)
 		})
@@ -262,24 +276,24 @@ describe('TailscaleMachineSyncService', () => {
 
 			// Verify records were created
 			const allRecords = mockCloudflareClient.getAllRecords()
-			
+
 			// Verify A records
 			const aRecords = allRecords.filter(r => r.type === 'A')
 			expect(aRecords.length).toBeGreaterThanOrEqual(2) // At least TS and one endpoint-based record
-			
+
 			// Verify we have TS record with comment
 			const tsRecord = aRecords.find(r => r.name === 'machine1.ts.example.com' && r.content === '100.1.2.3')
 			expect(tsRecord).toBeDefined()
 			expect(tsRecord?.comment).toBeDefined()
 			expect(tsRecord?.comment).toContain('cf-ts-dns:')
 			expect(tsRecord?.comment).toContain(':test-owner:')
-			
+
 			// Verify we have at least one endpoint-based record (LAN or WAN)
-			const endpointRecords = aRecords.filter(r => 
+			const endpointRecords = aRecords.filter(r =>
 				r.name.includes('lan') || r.name.includes('wan')
 			)
 			expect(endpointRecords.length).toBeGreaterThan(0)
-			
+
 			// All A records should have ownership comments
 			expect(aRecords.every(r => r.comment && r.comment.includes('cf-ts-dns:'))).toBe(true)
 			expect(aRecords.every(r => r.comment && r.comment.includes(':test-owner:'))).toBe(true)
@@ -353,7 +367,7 @@ describe('TailscaleMachineSyncService', () => {
 			// Verify records were created
 			const allRecords = mockCloudflareClient.getAllRecords()
 			expect(allRecords.length).toBeGreaterThan(0)
-			
+
 			// machine1: 1 A record with comment
 			// machine2: 2 A records with comments (TS and LAN)
 			const machine1Records = allRecords.filter(r => r.name.includes('machine1'))
@@ -478,7 +492,7 @@ describe('TailscaleMachineSyncService', () => {
 			// Verify machine1 records exist
 			const machine1Records = allRecords.filter(r => r.name.includes('machine1'))
 			expect(machine1Records.length).toBeGreaterThanOrEqual(2) // At least TS + some endpoint records
-			
+
 			// Verify machine2-hostname records exist
 			const machine2Records = allRecords.filter(r => r.name.includes('machine2-hostname'))
 			expect(machine2Records.length).toBeGreaterThanOrEqual(2) // At least TS + LAN records (10.0.0.5 is LAN)
@@ -582,14 +596,14 @@ describe('TailscaleMachineSyncService', () => {
 			// the record with different owner comment won't be found, so we'll create a new one
 			// and the old one will remain (we don't delete records we don't own)
 			const allRecords = mockCloudflareClient.getAllRecords()
-			
+
 			// We'll have both records - the old one with different owner, and our new one
-			const aRecords = allRecords.filter(r => 
+			const aRecords = allRecords.filter(r =>
 				r.type === 'A' && r.name === 'machine1.ts.example.com' && r.content === '100.1.2.3'
 			)
 			// Both records will exist since we can't see the old one to delete it
 			expect(aRecords.length).toBe(2)
-			
+
 			// Verify our new record has the correct ownership
 			const ourRecord = aRecords.find(r => r.comment?.includes(':test-owner:'))
 			expect(ourRecord).toBeDefined()
@@ -687,7 +701,7 @@ describe('TailscaleMachineSyncService', () => {
 
 			await tailscaleMachineSyncService.syncAllMachines()
 			allRecords = mockCloudflareClient.getAllRecords()
-			
+
 			// machine1 should have 2 WAN A records now (if both are classified as WAN)
 			const machine1FinalWANRecords = allRecords.filter(
 				r => r.name === 'machine1.wan.example.com' && r.type === 'A'
@@ -717,7 +731,7 @@ describe('TailscaleMachineSyncService', () => {
 
 			await tailscaleMachineSyncService.syncAllMachines()
 			allRecords = mockCloudflareClient.getAllRecords()
-			
+
 			// machine2 LAN records should be deleted
 			const machine2LANRecords = allRecords.filter(
 				r => r.name.includes('machine2') && r.name.includes('lan')
@@ -774,7 +788,7 @@ describe('TailscaleMachineSyncService', () => {
 			// Resync - should detect the change and correct it back
 			await tailscaleMachineSyncService.syncAllMachines()
 			allRecords = mockCloudflareClient.getAllRecords()
-			
+
 			// Should have corrected the WAN IP back to what Tailscale says
 			const wanRecords = allRecords.filter(
 				r => r.name === 'machine1.wan.example.com' && r.type === 'A'
@@ -802,20 +816,20 @@ describe('TailscaleMachineSyncService', () => {
 			await tailscaleMachineSyncService.syncAllMachines()
 
 			const allRecords = mockCloudflareClient.getAllRecords()
-			
+
 			// Should have TS record
 			const tsRecord = allRecords.find(r => r.name === 'machine1.ts.example.com')
 			expect(tsRecord).toBeDefined()
-			
+
 			// Should have LAN record (10.42.0.0 should be classified as LAN)
-			const lanRecord = allRecords.find(r => 
+			const lanRecord = allRecords.find(r =>
 				r.name === 'machine1.lan.example.com' && r.content === '10.42.0.0'
 			)
 			expect(lanRecord).toBeDefined()
 			expect(lanRecord?.proxied).toBe(false) // LAN records should never be proxied
-			
+
 			// Should NOT have WAN record for 10.42.0.0 (it's a LAN IP)
-			const wanRecordForLanIP = allRecords.find(r => 
+			const wanRecordForLanIP = allRecords.find(r =>
 				r.name === 'machine1.wan.example.com' && r.content === '10.42.0.0'
 			)
 			expect(wanRecordForLanIP).toBeUndefined()
@@ -835,7 +849,7 @@ describe('TailscaleMachineSyncService', () => {
 			}]
 
 			mockTailscaleClient.setDevices(devices)
-			
+
 			// Manually add a misclassified record: LAN IP in WAN domain with proxy enabled
 			// This simulates a bug where classification went wrong
 			mockCloudflareClient.addRecords({
@@ -849,15 +863,15 @@ describe('TailscaleMachineSyncService', () => {
 			await tailscaleMachineSyncService.syncAllMachines()
 
 			const allRecords = mockCloudflareClient.getAllRecords()
-			
+
 			// The misclassified record should be deleted (it's in wrong domain)
-			const misclassifiedRecord = allRecords.find(r => 
+			const misclassifiedRecord = allRecords.find(r =>
 				r.name === 'machine1.wan.example.com' && r.content === '10.42.0.0'
 			)
 			expect(misclassifiedRecord).toBeUndefined()
-			
+
 			// Should have correct LAN record instead
-			const lanRecord = allRecords.find(r => 
+			const lanRecord = allRecords.find(r =>
 				r.name === 'machine1.lan.example.com' && r.content === '10.42.0.0'
 			)
 			expect(lanRecord).toBeDefined()
@@ -881,15 +895,15 @@ describe('TailscaleMachineSyncService', () => {
 			await tailscaleMachineSyncService.syncAllMachines()
 
 			const allRecords = mockCloudflareClient.getAllRecords()
-			
+
 			// Should have WAN record with public IP
-			const wanRecord = allRecords.find(r => 
+			const wanRecord = allRecords.find(r =>
 				r.name === 'machine1.wan.example.com' && r.content === '203.0.113.5'
 			)
 			expect(wanRecord).toBeDefined()
 			// WAN IP with proxy tag should be proxied
 			expect(wanRecord?.proxied).toBe(true)
-			
+
 			// Now manually add a record with LAN IP in WAN domain (simulating misclassification)
 			// This tests the safeguard in createARecordForIP
 			mockCloudflareClient.addRecords({
@@ -904,7 +918,7 @@ describe('TailscaleMachineSyncService', () => {
 			await tailscaleMachineSyncService.syncAllMachines()
 
 			const finalRecords = mockCloudflareClient.getAllRecords()
-			const lanIPInWanDomain = finalRecords.find(r => 
+			const lanIPInWanDomain = finalRecords.find(r =>
 				r.name === 'machine1.wan.example.com' && r.content === '10.42.0.0'
 			)
 			expect(lanIPInWanDomain).toBeUndefined()
@@ -914,7 +928,7 @@ describe('TailscaleMachineSyncService', () => {
 			const devices: TailscaleDevice[] = [{
 				id: 'device-1',
 				name: 'machine1',
-				tags: ['tag:dns', 'tag:proxy'],
+				tags: ['tag:lan', 'tag:dns', 'tag:proxy'],
 				addresses: ['100.1.2.3'],
 				clientConnectivity: {
 					endpoints: [
@@ -929,25 +943,25 @@ describe('TailscaleMachineSyncService', () => {
 			await tailscaleMachineSyncService.syncAllMachines()
 
 			const allRecords = mockCloudflareClient.getAllRecords()
-			
+
 			// Should have one LAN record (first LAN IP selected)
-			const lanRecords = allRecords.filter(r => 
+			const lanRecords = allRecords.filter(r =>
 				r.name === 'machine1.lan.example.com'
 			)
 			expect(lanRecords.length).toBe(1)
 			expect(['10.42.0.0', '192.168.1.10']).toContain(lanRecords[0].content)
 			expect(lanRecords[0].proxied).toBe(false)
-			
+
 			// Should have WAN record with public IP
-			const wanRecord = allRecords.find(r => 
+			const wanRecord = allRecords.find(r =>
 				r.name === 'machine1.wan.example.com' && r.content === '203.0.113.5'
 			)
 			expect(wanRecord).toBeDefined()
 			expect(wanRecord?.proxied).toBe(true) // WAN IP with proxy tag should be proxied
-			
+
 			// Should NOT have LAN IPs in WAN domain
-			const lanIPsInWanDomain = allRecords.filter(r => 
-				r.name === 'machine1.wan.example.com' && 
+			const lanIPsInWanDomain = allRecords.filter(r =>
+				r.name === 'machine1.wan.example.com' &&
 				(r.content === '10.42.0.0' || r.content === '192.168.1.10')
 			)
 			expect(lanIPsInWanDomain.length).toBe(0)
@@ -967,19 +981,20 @@ describe('TailscaleMachineSyncService', () => {
 			// Create a service with empty lanCidrRanges
 			const emptyRangesClient = new MockTailscaleClient([])
 			emptyRangesClient.setDevices([device])
-			
-			const serviceWithEmptyRanges = new TailscaleMachineSyncService({
+
+			const serviceWithEmptyRanges = new TailscaleMachineSyncService(
+				{
+					DOMAIN_FOR_TAILSCALE_ENDPOINT: 'ts.example.com',
+					DOMAIN_FOR_WAN_ENDPOINT: 'wan.example.com',
+					DOMAIN_FOR_LAN_ENDPOINT: 'lan.example.com',
+					TAILSCALE_TAG_LAN_REGEX: /^tag:lan/,
+					TAILSCALE_TAG_TAILSCALE_REGEX: /^tag:ts/,
+					TAILSCALE_TAG_WAN_NO_PROXY_REGEX: /^tag:wan/,
+					TAILSCALE_TAG_WAN_PROXY_REGEX: /^tag:proxy/,
+					LAN_CIDR_RANGES: [],
+				} as any, defaultConfig.ownerId, {
 				tailscaleClient: emptyRangesClient as any,
 				cloudflareClient: mockCloudflareClient as any,
-				tsDomain: 'ts.example.com',
-				wanDomain: 'wan.example.com',
-				lanDomain: 'lan.example.com',
-				ownerId: 'test-owner',
-				lanTagRegex: /^tag:lan/,
-				tailscaleTagRegex: /^tag:ts/,
-				wanNoProxyTagRegex: /^tag:wan/,
-				wanProxyTagRegex: /^tag:proxy/,
-				lanCidrRanges: [],
 			})
 
 			// This should throw when trying to sync because getIPsByType will be called with empty array
@@ -1000,33 +1015,37 @@ describe('TailscaleMachineSyncService', () => {
 			mockTailscaleClient.setDevices(devices)
 
 			// Create service with empty WAN domain
-			const serviceWithEmptyWanDomain = new TailscaleMachineSyncService({
-				tailscaleClient: mockTailscaleClient as any,
-				cloudflareClient: mockCloudflareClient as any,
-				tsDomain: 'ts.example.com',
-				wanDomain: '', // Empty WAN domain
-				lanDomain: 'lan.example.com',
-				ownerId: 'test-owner',
-				lanTagRegex: /^tag:lan/,
-				tailscaleTagRegex: /^tag:ts/,
-				wanNoProxyTagRegex: /^tag:wan/,
-				wanProxyTagRegex: /^tag:proxy/,
-				lanCidrRanges: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'],
-			})
+			const serviceWithEmptyWanDomain = new TailscaleMachineSyncService(
+				{
+					DOMAIN_FOR_TAILSCALE_ENDPOINT: 'ts.example.com',
+					DOMAIN_FOR_WAN_ENDPOINT: '', // Empty WAN domain
+					DOMAIN_FOR_LAN_ENDPOINT: 'lan.example.com',
+					TAILSCALE_TAG_LAN_REGEX: /^tag:lan/,
+					TAILSCALE_TAG_TAILSCALE_REGEX: /^tag:ts/,
+					TAILSCALE_TAG_WAN_NO_PROXY_REGEX: /^tag:wan/,
+					TAILSCALE_TAG_WAN_PROXY_REGEX: /^tag:proxy/,
+					LAN_CIDR_RANGES: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'],
+				} as any,
+				defaultConfig.ownerId,
+				{
+					tailscaleClient: mockTailscaleClient as any,
+					cloudflareClient: mockCloudflareClient as any,
+				}
+			)
 
 			await serviceWithEmptyWanDomain.syncAllMachines()
 
 			const allRecords = mockCloudflareClient.getAllRecords()
-			
+
 			// Should have TS record
 			const tsRecord = allRecords.find(r => r.name === 'machine1.ts.example.com')
 			expect(tsRecord).toBeDefined()
-			
+
 			// Should have LAN record
 			const lanRecord = allRecords.find(r => r.name === 'machine1.lan.example.com')
 			expect(lanRecord).toBeDefined()
 			expect(lanRecord?.content).toBe('10.42.0.0')
-			
+
 			// Should NOT have WAN record (domain is empty)
 			const wanRecord = allRecords.find(r => r.name === 'machine1.wan.example.com')
 			expect(wanRecord).toBeUndefined()
@@ -1046,24 +1065,28 @@ describe('TailscaleMachineSyncService', () => {
 			mockTailscaleClient.setDevices(devices)
 
 			// Create service with all domains empty
-			const serviceWithEmptyDomains = new TailscaleMachineSyncService({
-				tailscaleClient: mockTailscaleClient as any,
-				cloudflareClient: mockCloudflareClient as any,
-				tsDomain: '', // Empty
-				wanDomain: '', // Empty
-				lanDomain: '', // Empty
-				ownerId: 'test-owner',
-				lanTagRegex: /^tag:lan/,
-				tailscaleTagRegex: /^tag:ts/,
-				wanNoProxyTagRegex: /^tag:wan/,
-				wanProxyTagRegex: /^tag:proxy/,
-				lanCidrRanges: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'],
-			})
+			const serviceWithEmptyDomains = new TailscaleMachineSyncService(
+				{
+					DOMAIN_FOR_TAILSCALE_ENDPOINT: '', // Empty
+					DOMAIN_FOR_WAN_ENDPOINT: '', // Empty
+					DOMAIN_FOR_LAN_ENDPOINT: '', // Empty
+					TAILSCALE_TAG_LAN_REGEX: /^tag:lan/,
+					TAILSCALE_TAG_TAILSCALE_REGEX: /^tag:ts/,
+					TAILSCALE_TAG_WAN_NO_PROXY_REGEX: /^tag:wan/,
+					TAILSCALE_TAG_WAN_PROXY_REGEX: /^tag:proxy/,
+					LAN_CIDR_RANGES: ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'],
+				} as any,
+				defaultConfig.ownerId,
+				{
+					tailscaleClient: mockTailscaleClient as any,
+					cloudflareClient: mockCloudflareClient as any,
+				}
+			)
 
 			await serviceWithEmptyDomains.syncAllMachines()
 
 			const allRecords = mockCloudflareClient.getAllRecords()
-			
+
 			// Should have no records at all
 			expect(allRecords.length).toBe(0)
 		})

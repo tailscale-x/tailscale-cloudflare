@@ -1,6 +1,19 @@
 # tailscale-cloudflare
 
-A Cloudflare Worker that automatically syncs DNS records from Tailscale machines to Cloudflare DNS. Each machine creates A records across three configurable domains (Tailscale, WAN, and LAN) with ownership validation using DNS record comments.
+A high-performance Cloudflare Worker built with **Waku** that automatically synchronizes DNS records from Tailscale machines to Cloudflare DNS. 
+
+This project leverages **React Server Components (RSC)** and **Server Actions** to provide a seamless Web UI for configuration and manual synchronization, while maintaining the lightweight footprint of a Cloudflare Worker.
+
+## Tech Stack
+
+| Component | Technology |
+|-----------|------------|
+| **Framework** | [Waku](https://waku.gg) (React Server Components) |
+| **Runtime** | Cloudflare Workers |
+| **Storage** | Cloudflare Workers KV |
+| **Language** | TypeScript |
+| **API** | Hono (Middleware & Webhooks) |
+| **Deployment** | Wrangler CLI |
 
 ## Features
 
@@ -18,37 +31,33 @@ A Cloudflare Worker that automatically syncs DNS records from Tailscale machines
 
 ```mermaid
 sequenceDiagram
-    participant WH as Webhook/Cron/syncAll
+    participant User as User (Browser)
+    participant RSC as Waku (RSC / Server Actions)
     participant SYNC as DNS Sync Service
-    participant TS as Tailscale Client
-    participant CF as Cloudflare Client
-    participant DNS as Cloudflare DNS
+    participant TS as Tailscale API
+    participant CF as Cloudflare DNS
     
-    WH->>SYNC: syncAllMachines()
-    SYNC->>TS: getDevices()
-    TS-->>SYNC: Device List
-    SYNC->>TS: classifyEndpoints(device)
-    TS-->>SYNC: Classified IPs (TS/LAN/WAN)
-    SYNC->>SYNC: Build Expected Records
-    SYNC->>CF: getExistingRecordsByComment()
-    CF->>DNS: Query by comment prefix
-    DNS-->>CF: Existing Records
-    CF-->>SYNC: Existing Records
-    SYNC->>SYNC: Perform Diff
-    SYNC->>CF: batchDeleteAndCreate()
-    CF->>DNS: Batch Update (200/batch)
-    DNS-->>CF: Success
-    CF-->>SYNC: Complete
-    SYNC-->>WH: Sync Result
+    Note over User, RSC: Configuration & Manual Sync
+    User->>RSC: Trigger Server Action (Save/Sync)
+    RSC->>SYNC: Execute Logic
+    SYNC->>TS: Fetch Machine List
+    SYNC->>CF: Update DNS Records
+    RSC-->>User: Update UI (useTransition)
+
+    Note over RSC, CF: Background Sync
+    RSC->>SYNC: Scheduled Cron / Webhook
+    SYNC->>TS: Fetch Machine List
+    SYNC->>CF: Update DNS Records
 ```
 
 ### Component Details
 
 | Component | Description |
 |-----------|-------------|
-| **Webhook Handler** (`GET /webhook`) | Manual endpoint to trigger full synchronization and set up Tailscale webhook. Extracts webhook URL from request and stores it in KV |
+| **Web UI** (`/`) | Home page with a "Sync Now" button to manually trigger synchronization using React Server Actions |
+| **Config UI** (`/config`) | Integrated configuration interface for managing all settings securely using React Server Actions |
 | **Webhook Handler** (`POST /webhook`) | Receives Tailscale webhook events, validates signatures, and triggers full sync of all machines |
-| **Cron Handler** (hourly) | Scheduled job that performs full synchronization of all devices from Tailscale to Cloudflare DNS. Also verifies and updates webhook configuration using URL stored in KV |
+| **Cron Handler** (hourly) | Scheduled job that performs full synchronization of all devices from Tailscale to Cloudflare DNS |
 | **DNS Sync Service** | Orchestrates the sync process: fetches devices, classifies IPs, builds expected records, fetches existing records, performs diff, and executes batch operations |
 | **Tailscale Client** | Handles Tailscale API interactions and IP classification (LAN/WAN/TS) based on configured CIDR ranges |
 | **Cloudflare Client** | Manages Cloudflare DNS API operations including fetching records by comment prefix and batch create/delete operations |
@@ -187,41 +196,19 @@ You can optionally set `DNS_RECORD_OWNER_ID` as an environment variable in the C
 
 ### 5. Configure Tailscale Webhook (Optional but Recommended)
 
-**Automated Setup (Recommended):**
-
-The worker can automatically create and manage Tailscale webhooks. The webhook URL is automatically detected from requests and stored in KV.
+The worker can receive Tailscale webhooks for real-time updates.
 
 1. **Deploy Worker**: Deploy your worker first (see step 3 above)
 
 2. **Configure Settings**: Configure your settings via the `/config` UI (see step 4 above)
 
-3. **Trigger Webhook Setup**: Visit `GET /webhook` endpoint:
-   ```bash
-   curl https://your-worker-name.your-subdomain.workers.dev/webhook
-   ```
-   
-   This will:
-   - Extract the webhook URL from the request
-   - Store it in Cloudflare KV
-   - Create/update the Tailscale webhook automatically
-   - Perform a full DNS sync
-   - Return the webhook setup status and sync results
+3. **Provide Webhook Secret**: If you have a Tailscale webhook, you can manually set its secret in the `/config` UI or via KV.
 
-4. **Automatic Secret Storage**: The webhook secret is automatically stored in Cloudflare KV when the webhook is created. No manual configuration needed!
+4. **Trigger Sync**: You can trigger a manual sync anytime using the **"Sync Now"** button on the Home page.
 
-5. **Cron Job Verification**: The hourly cron job will automatically verify and update the webhook configuration using the stored URL and secret from KV.
+### 6. Verify Deployment
 
-**Note**: The automated setup requires your Tailscale API key to have `webhooks` OAuth scope. Most API keys with device read permissions also have webhook permissions. If webhook creation fails, check your API key permissions in the Tailscale Admin Console.
-
-### 6. Deploy Worker
-
-```bash
-npm run deploy
-```
-
-After deployment, note your worker URL (e.g., `https://cloudflare-tailscale-dns.your-subdomain.workers.dev`)
-
-**Important**: After deployment, configure settings via `/config` and visit `GET /webhook` to set up the webhook URL and trigger the first sync (see steps 4-5 above).
+After deployment, navigate to your worker URL and verify you can access the Home and Config pages. Use the "Sync Now" button to perform your first synchronization.
 
 ### 7. Verify Cron Trigger
 
@@ -231,29 +218,42 @@ After deployment, note your worker URL (e.g., `https://cloudflare-tailscale-dns.
 
 ## Development
 
+### Project Structure
+
+| Directory/File | Description |
+|----------------|-------------|
+| `src/pages/` | Waku file-based routing (e.g., `index.tsx`, `config.tsx`) |
+| `src/actions.ts` | **Server Actions** for form handling and manual sync |
+| `src/components/` | React components (both Server and Client components) |
+| `src/services/` | Core business logic (Tailscale/Cloudflare integration) |
+| `src/middleware/` | Hono middleware for environment and settings validation |
+| `src/handlers/` | Background job handlers (Cron, Webhooks) |
+| `wrangler.jsonc` | Cloudflare Worker and Assets configuration |
+
 ### Local Development
 
 ```bash
 npm run dev
 ```
+By default, the dev server runs at `http://localhost:3000`.
 
 ### Test Webhook Locally
 
 1. Start dev server: `npm run dev`
-2. Use a tool like `ngrok` to expose local server: `ngrok http 8787`
-3. Configure Tailscale webhook to point to your ngrok URL
+2. Use a tool like `cloudflared` or `ngrok` to expose local server: `cloudflared tunnel --url http://localhost:3000`
+3. Configure Tailscale webhook to point to your tunnel URL
 4. Test webhook events
 
 ### Test Cron Locally
 
 ```bash
-wrangler dev --test-scheduled
+npx wrangler dev --test-scheduled
 ```
 
 This exposes a `/__scheduled` endpoint. Test with:
 
 ```bash
-curl "http://localhost:8787/__scheduled?cron=0+*+*+*+*"
+curl "http://localhost:3000/__scheduled?cron=0+*+*+*+*"
 ```
 
 ### Generate Type Definitions

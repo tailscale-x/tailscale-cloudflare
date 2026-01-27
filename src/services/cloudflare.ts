@@ -15,8 +15,7 @@ import { createLogger } from '../utils/logger'
 import { ApiError } from '../utils/errors'
 
 const logger = createLogger()
-const ZONE_ID_TTL_MS = 5 * 60 * 1000 // 5 minutes
-const ZONE_LIST_TTL_MS = 5 * 60 * 1000 // 5 minutes
+const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
 
 export interface CloudflareClientConfig {
 	apiToken: string
@@ -38,12 +37,12 @@ export class CloudflareClient {
 	private isZonePostfixMatch(domain: string, zoneName: string): boolean {
 		const domainLower = domain.toLowerCase().replace(/\.$/, '') // Remove trailing dot
 		const zoneLower = zoneName.toLowerCase().replace(/\.$/, '')
-		
+
 		// Exact match
 		if (domainLower === zoneLower) {
 			return true
 		}
-		
+
 		// Postfix match: zone name must be a suffix of domain
 		// e.g., "example.com" is a postfix of "ts.example.com"
 		return domainLower.endsWith('.' + zoneLower)
@@ -57,21 +56,23 @@ export class CloudflareClient {
 	}
 
 	/**
-	 * Fetch zones with memoized TTL to avoid repeated listings
+	 * Fetch zones with TTL cache to avoid repeated listings
 	 */
-	@MemoizeExpiring(ZONE_LIST_TTL_MS)
+	@MemoizeExpiring(CACHE_TTL_MS)
 	private async getZones(): Promise<{ id: string; name: string }[]> {
+		// Fetch fresh data
 		const zones: { id: string; name: string }[] = []
 		for await (const zone of this.client.zones.list()) {
 			zones.push({ id: zone.id, name: zone.name })
 		}
+
 		return zones
 	}
 
 	/**
-	 * Get zone ID from a domain name (memoized with TTL)
+	 * Get zone ID from a domain name (with TTL cache)
 	 */
-	@MemoizeExpiring(ZONE_ID_TTL_MS)
+	@MemoizeExpiring(CACHE_TTL_MS)
 	private async getZoneIdFromDomain(domain: string): Promise<string> {
 		if (!domain || domain.trim() === '') {
 			throw new ApiError(
@@ -88,7 +89,7 @@ export class CloudflareClient {
 			// Use cached zones list and find the best postfix match
 			// Prefer longer (more specific) matches
 			let foundZone: { id: string; name: string; length: number } | null = null
-			
+
 			for (const zone of await this.getZones()) {
 				if (this.isZonePostfixMatch(normalizedDomain, zone.name)) {
 					// Prefer the longest matching zone (most specific)
@@ -107,6 +108,7 @@ export class CloudflareClient {
 			}
 
 			logger.info(`Found zone ID: ${foundZone.id} for domain: ${foundZone.name} (matched ${normalizedDomain})`)
+
 			return foundZone.id
 		} catch (error) {
 			if (error instanceof ApiError) {
@@ -128,7 +130,7 @@ export class CloudflareClient {
 	 */
 	async getExistingRecordsByComment(commentPrefix: string): Promise<RecordResponse[]> {
 		const records: RecordResponse[] = []
-		
+
 		// Search across all zones
 		for (const zone of await this.getZones()) {
 			const params: RecordListParams = {
@@ -161,6 +163,9 @@ export class CloudflareClient {
 
 		// Extract zone ID from first record's name (all records should be in same zone)
 		const firstRecord = records[0]
+		if (!firstRecord) {
+			return
+		}
 		const zoneId = await this.getZoneIdFromDomain(firstRecord.name)
 
 		const batchParams: RecordBatchParams = {

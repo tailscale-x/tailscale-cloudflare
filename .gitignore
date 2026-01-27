@@ -39,3 +39,14 @@ lerna-debug.log*
 
 worker-configuration.d.ts
 wrangler.jsonc
+
+
+node_modules
+dist
+.env*
+*.tsbuildinfo
+.cache
+.DS_Store
+*.pem
+.wrangler
+worker-configuration.d.ts

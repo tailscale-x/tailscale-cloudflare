@@ -5,6 +5,31 @@ import { settingsSchema, Settings, ParsedSettings } from '../types/settings'
 
 const logger = createLogger()
 
+/**
+ * Keys that should never be returned to the browser in plaintext
+ */
+export const SENSITIVE_KEYS: (keyof Settings)[] = [
+	'TAILSCALE_API_KEY',
+	'CLOUDFLARE_API_TOKEN',
+	'webhookSecret'
+]
+
+/**
+ * Mask a secret value with a fake value of the same length
+ */
+export function maskSecret(value: string | undefined): string {
+	if (!value) return ''
+	return '*'.repeat(value.length)
+}
+
+/**
+ * Check if a value is a masked secret
+ */
+export function isMasked(value: string | undefined): boolean {
+	if (!value) return false
+	return value.length > 0 && /^\*+$/.test(value)
+}
+
 
 /**
  * Get the settings key for a given owner ID

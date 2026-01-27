@@ -5,26 +5,13 @@ import type {
 	RecordResponse,
 	ARecordParam,
 } from 'cloudflare/resources/dns/records'
+import type { ParsedSettings } from '../types/settings'
 import { TailscaleClient } from './tailscale-client'
 import { CloudflareClient } from './cloudflare'
 import { createLogger } from '../utils/logger'
 import { classifyIP } from '../utils/ip-classifier'
 
 const logger = createLogger()
-
-export interface TailscaleMachineSyncConfig {
-	tailscaleClient: TailscaleClient
-	cloudflareClient: CloudflareClient
-	tsDomain: string
-	wanDomain: string
-	lanDomain: string
-	ownerId: string
-	lanTagRegex: RegExp
-	tailscaleTagRegex: RegExp
-	wanNoProxyTagRegex: RegExp
-	wanProxyTagRegex: RegExp
-	lanCidrRanges: string[]
-}
 
 /**
  * Result of DNS synchronization operation
@@ -48,29 +35,39 @@ export class TailscaleMachineSyncService {
 
 	private tailscaleClient: TailscaleClient
 	private cloudflareClient: CloudflareClient
-	private tsDomain: string
-	private wanDomain: string
-	private lanDomain: string
+	private settings: ParsedSettings
 	private ownerId: string
-	private lanTagRegex: RegExp
-	private tailscaleTagRegex: RegExp
-	private wanNoProxyTagRegex: RegExp
-	private wanProxyTagRegex: RegExp
-	private lanCidrRanges: string[]
 
-	constructor(config: TailscaleMachineSyncConfig) {
-		this.tailscaleClient = config.tailscaleClient
-		this.cloudflareClient = config.cloudflareClient
-		this.tsDomain = config.tsDomain
-		this.wanDomain = config.wanDomain
-		this.lanDomain = config.lanDomain
-		this.ownerId = config.ownerId
-		// Regex objects are already compiled by Zod validation
-		this.lanTagRegex = config.lanTagRegex
-		this.tailscaleTagRegex = config.tailscaleTagRegex
-		this.wanNoProxyTagRegex = config.wanNoProxyTagRegex
-		this.wanProxyTagRegex = config.wanProxyTagRegex
-		this.lanCidrRanges = config.lanCidrRanges
+	constructor(
+		settings: ParsedSettings,
+		ownerId: string,
+		clients?: {
+			tailscaleClient?: TailscaleClient
+			cloudflareClient?: CloudflareClient
+		}
+	) {
+		this.settings = settings
+		this.ownerId = ownerId
+
+		this.tailscaleClient = clients?.tailscaleClient || new TailscaleClient({
+			apiKey: settings.TAILSCALE_API_KEY,
+			tailnet: settings.TAILSCALE_TAILNET,
+			lanCidrRanges: settings.LAN_CIDR_RANGES,
+		})
+
+		this.cloudflareClient = clients?.cloudflareClient || new CloudflareClient({
+			apiToken: settings.CLOUDFLARE_API_TOKEN,
+		})
+	}
+
+	/**
+	 * Static factory method that creates service and performs sync
+	 * Accepts ParsedSettings object for cleaner API
+	 */
+	static async performSync(settings: ParsedSettings, ownerId: string): Promise<SyncResult> {
+		logger.info(`Creating DNS sync service with owner ID: ${ownerId}`)
+		const service = new TailscaleMachineSyncService(settings, ownerId)
+		return service.syncAllMachines()
 	}
 
 	/**
@@ -90,7 +87,7 @@ export class TailscaleMachineSyncService {
 		if (!device.tags || device.tags.length === 0) {
 			return false
 		}
-		return device.tags.some(tag => this.lanTagRegex.test(tag))
+		return device.tags.some(tag => this.settings.TAILSCALE_TAG_LAN_REGEX.test(tag))
 	}
 
 	/**
@@ -101,7 +98,7 @@ export class TailscaleMachineSyncService {
 		if (!device.tags || device.tags.length === 0) {
 			return false
 		}
-		return device.tags.some(tag => this.tailscaleTagRegex.test(tag))
+		return device.tags.some(tag => this.settings.TAILSCALE_TAG_TAILSCALE_REGEX.test(tag))
 	}
 
 	/**
@@ -112,7 +109,7 @@ export class TailscaleMachineSyncService {
 		if (!device.tags || device.tags.length === 0) {
 			return false
 		}
-		return device.tags.some(tag => this.wanNoProxyTagRegex.test(tag))
+		return device.tags.some(tag => this.settings.TAILSCALE_TAG_WAN_NO_PROXY_REGEX.test(tag))
 	}
 
 	/**
@@ -123,7 +120,7 @@ export class TailscaleMachineSyncService {
 		if (!device.tags || device.tags.length === 0) {
 			return false
 		}
-		return device.tags.some(tag => this.wanProxyTagRegex.test(tag))
+		return device.tags.some(tag => this.settings.TAILSCALE_TAG_WAN_PROXY_REGEX.test(tag))
 	}
 
 	/**
@@ -194,8 +191,8 @@ export class TailscaleMachineSyncService {
 		const aKey = this.getRecordKey('A', aRecordName, ip)
 
 		// Check if IP is in LAN CIDR range
-		const isLanIP = classifyIP(ip, this.lanCidrRanges) === 'lan'
-		const isWanDomain = Boolean(this.wanDomain && domain === this.wanDomain)
+		const isLanIP = classifyIP(ip, this.settings.LAN_CIDR_RANGES) === 'lan'
+		const isWanDomain = Boolean(this.settings.DOMAIN_FOR_WAN_ENDPOINT && domain === this.settings.DOMAIN_FOR_WAN_ENDPOINT)
 
 		// Safety check: LAN IPs should NEVER be in WAN domain - this indicates a classification bug
 		if (isLanIP && isWanDomain) {
@@ -261,8 +258,8 @@ export class TailscaleMachineSyncService {
 		const keys = new Set<string>()
 
 		// Handle Tailscale IP - only if tsDomain is configured and device tags match TAILSCALE regex
-		if (classifiedIPs.tailscaleIP && this.tsDomain && this.shouldCreateTailscaleRecord(device)) {
-			const { aRecord, aKey } = this.createARecordForIP(machineName, classifiedIPs.tailscaleIP, this.tsDomain, device, false)
+		if (classifiedIPs.tailscaleIP && this.settings.DOMAIN_FOR_TAILSCALE_ENDPOINT && this.shouldCreateTailscaleRecord(device)) {
+			const { aRecord, aKey } = this.createARecordForIP(machineName, classifiedIPs.tailscaleIP, this.settings.DOMAIN_FOR_TAILSCALE_ENDPOINT, device, false)
 			records.push(aRecord)
 			keys.add(aKey)
 		}
@@ -272,31 +269,31 @@ export class TailscaleMachineSyncService {
 		const shouldCreateWanNoProxy = this.shouldCreateWanNoProxyRecord(device)
 		const shouldCreateWanProxy = this.shouldCreateWanProxyRecord(device)
 
-		if (classifiedIPs.wanIPs && classifiedIPs.wanIPs.length > 0 && this.wanDomain && (shouldCreateWanNoProxy || shouldCreateWanProxy)) {
+		if (classifiedIPs.wanIPs && classifiedIPs.wanIPs.length > 0 && this.settings.DOMAIN_FOR_WAN_ENDPOINT && (shouldCreateWanNoProxy || shouldCreateWanProxy)) {
 			// Create multiple A records with same name for round-robin
 			for (const wanIP of classifiedIPs.wanIPs) {
 				// Double-check classification: if this IP is actually a LAN IP, log a warning
 				// This should never happen if classification is working correctly
-				const isActuallyLan = classifyIP(wanIP, this.lanCidrRanges) === 'lan'
+				const isActuallyLan = classifyIP(wanIP, this.settings.LAN_CIDR_RANGES) === 'lan'
 				if (isActuallyLan) {
 					logger.error(
 						`Classification error: IP ${wanIP} for ${machineName} was classified as WAN but matches LAN CIDR ranges. ` +
-						`This indicates a bug in IP classification. LAN_CIDR_RANGES: ${this.lanCidrRanges.join(', ')}`
+						`This indicates a bug in IP classification. LAN_CIDR_RANGES: ${this.settings.LAN_CIDR_RANGES.join(', ')}`
 					)
 				}
 
 				// Determine proxy setting: prefer WAN_PROXY if both match, otherwise use WAN_NO_PROXY
 				const proxied = shouldCreateWanProxy
 
-				const { aRecord, aKey } = this.createARecordForIP(machineName, wanIP, this.wanDomain, device, proxied)
+				const { aRecord, aKey } = this.createARecordForIP(machineName, wanIP, this.settings.DOMAIN_FOR_WAN_ENDPOINT, device, proxied)
 				records.push(aRecord)
 				keys.add(aKey)
 			}
 		}
 
 		// Handle LAN IP - single selection, only if lanDomain is configured and device tags match LAN regex
-		if (classifiedIPs.lanIP && this.lanDomain && this.shouldCreateLanRecord(device)) {
-			const { aRecord, aKey } = this.createARecordForIP(machineName, classifiedIPs.lanIP, this.lanDomain, device, false)
+		if (classifiedIPs.lanIP && this.settings.DOMAIN_FOR_LAN_ENDPOINT && this.shouldCreateLanRecord(device)) {
+			const { aRecord, aKey } = this.createARecordForIP(machineName, classifiedIPs.lanIP, this.settings.DOMAIN_FOR_LAN_ENDPOINT, device, false)
 			records.push(aRecord)
 			keys.add(aKey)
 		}
