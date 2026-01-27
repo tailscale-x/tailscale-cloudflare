@@ -13,7 +13,7 @@ const logger = createLogger();
 export const POST = async (request: Request): Promise<Response> => {
     try {
         const cfEnv = env as Env;
-        const ownerId = cfEnv.DNS_RECORD_OWNER_ID || 'cloudflare-tailscale-dns';
+        const ownerId = cfEnv.DNS_RECORD_OWNER_ID;
 
         // Load and validate settings
         const rawSettings = await getSettings(cfEnv.CONFIG_KV, ownerId);

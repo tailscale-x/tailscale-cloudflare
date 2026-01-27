@@ -16,7 +16,7 @@ export async function handleScheduled(event: ScheduledEvent): Promise<void> {
 		const cfEnv = env as Env;
 		logger.info(`Cron job triggered: ${event.cron}`);
 
-		const ownerId = cfEnv.DNS_RECORD_OWNER_ID || 'cloudflare-tailscale-dns';
+		const ownerId = cfEnv.DNS_RECORD_OWNER_ID;
 
 		// Load settings manually since we are not in HTTP context
 		const rawSettings = await getSettings(cfEnv.CONFIG_KV, ownerId);

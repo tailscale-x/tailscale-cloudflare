@@ -9,7 +9,7 @@ export interface Env {
 	CONFIG_KV: KVNamespace
 
 	// Bootstrap configuration
-	DNS_RECORD_OWNER_ID?: string
+	DNS_RECORD_OWNER_ID: string
 
 	// Keep LOG_LEVEL in Env for startup logging before settings are loaded
 	LOG_LEVEL?: string
@@ -17,12 +17,11 @@ export interface Env {
 
 export const envSchema = z.object({
 	CONFIG_KV: z.custom<KVNamespace>((val) => val !== undefined && val !== null, "CONFIG_KV is required"),
-	DNS_RECORD_OWNER_ID: z.string().optional(),
+	DNS_RECORD_OWNER_ID: z.string(),
 	LOG_LEVEL: z.preprocess(
 		(val) => (typeof val === 'string' && val.trim() === '' ? undefined : val),
 		z
 			.string()
-			.optional()
 			.refine(
 				(val) => {
 					if (!val) return true

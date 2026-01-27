@@ -12,7 +12,7 @@ const logger = createLogger();
 export async function saveConfigAction(formData: Partial<Settings>) {
     try {
         const cfEnv = env as Env;
-        const ownerId = cfEnv.DNS_RECORD_OWNER_ID || 'cloudflare-tailscale-dns';
+        const ownerId = cfEnv.DNS_RECORD_OWNER_ID;
 
         // Validate settings (throws if invalid)
         validateSettings(formData);
@@ -44,7 +44,7 @@ export async function saveConfigAction(formData: Partial<Settings>) {
 export async function manualSyncAction() {
     try {
         const cfEnv = env as Env;
-        const ownerId = cfEnv.DNS_RECORD_OWNER_ID || 'cloudflare-tailscale-dns';
+        const ownerId = cfEnv.DNS_RECORD_OWNER_ID;
 
         // Load and validate settings
         const { getSettings } = await import('./utils/kv-storage');
@@ -62,10 +62,37 @@ export async function manualSyncAction() {
                 added: result.added,
                 deleted: result.deleted,
                 summary: result.summary,
+                managed: result.managed,
             },
         };
     } catch (error) {
         logger.error('Manual sync error via Server Action:', error);
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+        };
+    }
+}
+
+export async function getSyncStatusAction() {
+    try {
+        const cfEnv = env as Env;
+        const ownerId = cfEnv.DNS_RECORD_OWNER_ID;
+
+        // Load and validate settings
+        const { getSettings } = await import('./utils/kv-storage');
+        const rawSettings = await getSettings(cfEnv.CONFIG_KV, ownerId);
+        const settings = validateSettings(rawSettings);
+
+        // Perform dry-run sync to get status
+        const result = await TailscaleMachineSyncService.performSync(settings, ownerId, true);
+
+        return {
+            success: true,
+            sync: result,
+        };
+    } catch (error) {
+        logger.error('Get sync status error via Server Action:', error);
         return {
             success: false,
             error: error instanceof Error ? error.message : String(error),

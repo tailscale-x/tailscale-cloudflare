@@ -25,6 +25,7 @@ export interface SyncResult {
 		totalDevices: number
 		filteredDevices: number
 	}
+	managed: RecordResponse[]
 }
 
 export class TailscaleMachineSyncService {
@@ -64,10 +65,10 @@ export class TailscaleMachineSyncService {
 	 * Static factory method that creates service and performs sync
 	 * Accepts ParsedSettings object for cleaner API
 	 */
-	static async performSync(settings: ParsedSettings, ownerId: string): Promise<SyncResult> {
+	static async performSync(settings: ParsedSettings, ownerId: string, dryRun: boolean = false): Promise<SyncResult> {
 		logger.info(`Creating DNS sync service with owner ID: ${ownerId}`)
 		const service = new TailscaleMachineSyncService(settings, ownerId)
-		return service.syncAllMachines()
+		return service.syncAllMachines(dryRun)
 	}
 
 	/**
@@ -384,12 +385,14 @@ export class TailscaleMachineSyncService {
 
 			// Fill batch with deletes first
 			while (deleteIdx < recordsToDelete.length && deleteBatch.length + createBatch.length < remainingOps) {
-				deleteBatch.push(recordsToDelete[deleteIdx++])
+				const record = recordsToDelete[deleteIdx++]
+				if (record) deleteBatch.push(record)
 			}
 
 			// Then fill with creates
 			while (createIdx < recordsToCreate.length && deleteBatch.length + createBatch.length < remainingOps) {
-				createBatch.push(recordsToCreate[createIdx++])
+				const record = recordsToCreate[createIdx++]
+				if (record) createBatch.push(record)
 			}
 
 			if (deleteBatch.length > 0 || createBatch.length > 0) {
@@ -419,7 +422,7 @@ export class TailscaleMachineSyncService {
 	 * Creates/updates records first, then deletes stale ones to avoid downtime
 	 * Returns information about added and deleted records
 	 */
-	async syncAllMachines(): Promise<SyncResult> {
+	async syncAllMachines(dryRun: boolean = false): Promise<SyncResult> {
 		logger.info('Starting DNS synchronization for all machines')
 		const devices = await this.tailscaleClient.getDevices()
 		logger.info(`Found ${devices.length} devices from Tailscale`)
@@ -477,11 +480,15 @@ export class TailscaleMachineSyncService {
 		// Perform diff: identify records to create and records to delete
 		const { toCreate, toDelete } = this.performDiff(expectedRecords, expectedKeys, existingRecordsMap)
 
-		// Execute: Delete and create in batches
+		// Execute: Delete and create in batches (only if not dry run)
 		if (toDelete.length > 0 || toCreate.length > 0) {
-			logger.info(`Executing batch operations: ${toDelete.length} deletes, ${toCreate.length} creates`)
-			await this.executeBatchOperations(toDelete, toCreate)
-			logger.info('Batch operations completed successfully')
+			if (!dryRun) {
+				logger.info(`Executing batch operations: ${toDelete.length} deletes, ${toCreate.length} creates`)
+				await this.executeBatchOperations(toDelete, toCreate)
+				logger.info('Batch operations completed successfully')
+			} else {
+				logger.info(`DRY RUN: Would execute batch operations: ${toDelete.length} deletes, ${toCreate.length} creates`)
+			}
 		} else {
 			logger.info('No DNS changes required - all records are up to date')
 		}
@@ -500,6 +507,7 @@ export class TailscaleMachineSyncService {
 				totalDevices: devices.length,
 				filteredDevices: filteredDevices.length,
 			},
+			managed: existingManagedRecords,
 		}
 	}
 }

@@ -15,6 +15,9 @@ export default async function HomePage() {
           Configure Settings
         </Link>
         <ManualSync />
+        <Link to="/status" className="block text-center px-4 py-2 border border-gray-300 text-gray-700 rounded hover:bg-gray-50">
+          View Sync Status
+        </Link>
       </div>
       <div className="mt-12 space-y-2 text-sm text-gray-500">
         <h2 className="font-semibold text-gray-700">API Endpoints</h2>

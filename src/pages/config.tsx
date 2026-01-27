@@ -6,7 +6,7 @@ import './config.css';
 
 export default async function ConfigPage() {
     const cfEnv = env as Env;
-    const ownerId = cfEnv.DNS_RECORD_OWNER_ID || 'cloudflare-tailscale-dns';
+    const ownerId = cfEnv.DNS_RECORD_OWNER_ID;
 
     // Load current settings (may be partial/invalid)
     const currentSettings = await getSettings(cfEnv.CONFIG_KV, ownerId);
