@@ -9,7 +9,6 @@
     ],
     "initializeCommand": "mkdir -p ${HOME}/.wrangler",
     "updateRemoteUserUID": true,
-    "remoteUser": "node",
     "postStartCommand": "npm install && npm run cf-typegen",
     "shutdownAction": "stopContainer"
 }
