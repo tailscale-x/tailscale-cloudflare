@@ -1,14 +1,14 @@
 import type { Context, Next } from 'hono'
 import type { Env } from '../types/env'
-import type { ParsedSettings } from '../types/settings'
-import { getSettings, validateSettings } from '../utils/kv-storage'
+import type { TaskBasedSettings } from '../types/task-based-settings'
+import { getSettings, validateTaskBasedSettings } from '../utils/kv-storage'
 import { createLogger } from '../utils/logger'
 import { ConfigurationError } from '../utils/errors'
 
 const logger = createLogger()
 
 export type SettingsVariables = {
-    settings: ParsedSettings
+    settings: TaskBasedSettings
     settingsError?: Error // Available if settings failed validation but we proceeded (e.g. for config UI)
 }
 
@@ -26,7 +26,7 @@ export async function settingsMiddleware<
 
     try {
         const rawSettings = await getSettings(c.env.CONFIG_KV, ownerId)
-        const parsedSettings = validateSettings(rawSettings)
+        const parsedSettings = validateTaskBasedSettings(rawSettings)
         c.set('settings', parsedSettings)
         await next()
     } catch (error) {
@@ -34,11 +34,6 @@ export async function settingsMiddleware<
         // so the user can fix them.
         if (c.req.path.startsWith('/config') || c.req.path === '/api/config') {
             logger.warn('Settings validation failed, but proceeding for config UI', error)
-            // We can't set 'settings' to ParsedSettings if it failed. 
-            // Ideally 'settings' would be optional or nullable in the type?
-            // But existing code expects ValidatedEnv (which we rename to Settings) to be present.
-            // We will handle this by casing in the config handler.
-            // Here we just set the error.
             c.set('settingsError', error instanceof Error ? error : new Error(String(error)))
             await next()
             return
@@ -55,3 +50,4 @@ export async function settingsMiddleware<
         )
     }
 }
+

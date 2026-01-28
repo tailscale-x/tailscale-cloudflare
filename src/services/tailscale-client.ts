@@ -4,14 +4,13 @@ import type {
 	TailscaleDevice,
 	TailscaleDevicesResponse,
 	TailscaleACL,
-	ClassifiedIPs,
 	TailscaleWebhook,
 	TailscaleWebhooksResponse,
 	CreateTailscaleWebhookRequest,
 	UpdateTailscaleWebhookRequest,
 	TailscaleWebhookEventType,
 } from '../types/tailscale'
-import { getIPsByType } from '../utils/ip-classifier'
+
 import { createLogger } from '../utils/logger'
 import { ApiError } from '../utils/errors'
 import { parse as parseJsonc } from 'jsonc-parser'
@@ -29,19 +28,16 @@ export const REQUIRED_WEBHOOK_SUBSCRIPTIONS: TailscaleWebhookEventType[] = [
 export interface TailscaleClientConfig {
 	apiKey: string
 	tailnet: string
-	lanCidrRanges: string[]
 }
 
 export class TailscaleClient {
 	private apiKey: string
 	private tailnet: string
 	private baseUrl = 'https://api.tailscale.com/api/v2'
-	private lanCidrRanges: string[]
 
 	constructor(config: TailscaleClientConfig) {
 		this.apiKey = config.apiKey
 		this.tailnet = config.tailnet
-		this.lanCidrRanges = config.lanCidrRanges
 	}
 
 	private async request<T>(
@@ -108,28 +104,23 @@ export class TailscaleClient {
 		const endpoint = `/tailnet/${this.tailnet}/devices?fields=all`
 		logger.info(`Fetching devices from Tailscale API: ${endpoint}`)
 		const response = await this.request<TailscaleDevicesResponse | TailscaleDevice[]>(endpoint)
-		
+
 		// Log the full raw response for debugging
 		logger.debug(`Tailscale API response (raw): ${JSON.stringify(response, null, 2)}`)
-		
+
 		// Handle both array response and object with devices property
 		const devices = Array.isArray(response) ? response : (response.devices || [])
 		logger.info(`Retrieved ${devices.length} devices from Tailscale`)
-		
+
 		// Log each device's structure for debugging
 		for (const device of devices) {
 			logger.debug(`Device ${device.id} (${device.name || 'unnamed'}): ${JSON.stringify(device, null, 2)}`)
 		}
-		
+
 		return devices
 	}
 
-	/**
-	 * Classify endpoints from a device and return IPs by type
-	 */
-	classifyEndpoints(device: TailscaleDevice): ClassifiedIPs {
-		return getIPsByType(device, this.lanCidrRanges)
-	}
+
 
 	/**
 	 * Fetch ACL configuration from the tailnet

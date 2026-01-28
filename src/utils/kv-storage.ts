@@ -1,14 +1,14 @@
 import { z } from 'zod'
 import { createLogger } from './logger'
 import { ConfigurationError } from './errors'
-import { settingsSchema, Settings, ParsedSettings } from '../types/settings'
+import { taskBasedSettingsSchema, TaskBasedSettings } from '../types/task-based-settings'
 
 const logger = createLogger()
 
 /**
  * Keys that should never be returned to the browser in plaintext
  */
-export const SENSITIVE_KEYS: (keyof Settings)[] = [
+export const SENSITIVE_KEYS: (keyof TaskBasedSettings)[] = [
 	'TAILSCALE_API_KEY',
 	'CLOUDFLARE_API_TOKEN',
 	'webhookSecret'
@@ -41,12 +41,12 @@ function getSettingsKey(ownerId: string): string {
 /**
  * Get all settings from KV
  */
-export async function getSettings(kv: KVNamespace, ownerId: string): Promise<Partial<Settings>> {
+export async function getSettings(kv: KVNamespace, ownerId: string): Promise<Partial<TaskBasedSettings>> {
 	try {
 		const key = getSettingsKey(ownerId)
 		const data = await kv.get(key)
 		if (data) {
-			const settings = JSON.parse(data) as Settings
+			const settings = JSON.parse(data) as TaskBasedSettings
 			logger.debug(`Retrieved settings from KV for owner: ${ownerId}`)
 			return settings
 		}
@@ -58,38 +58,9 @@ export async function getSettings(kv: KVNamespace, ownerId: string): Promise<Par
 }
 
 /**
- * Validate settings and return parsed object with RegExp instances
- */
-export function validateSettings(settings: unknown): ParsedSettings {
-	try {
-		const parsed = settingsSchema.parse(settings)
-		return {
-			...parsed,
-			TAILSCALE_TAG_LAN_REGEX: new RegExp(parsed.TAILSCALE_TAG_LAN_REGEX),
-			TAILSCALE_TAG_TAILSCALE_REGEX: new RegExp(parsed.TAILSCALE_TAG_TAILSCALE_REGEX),
-			TAILSCALE_TAG_WAN_NO_PROXY_REGEX: new RegExp(parsed.TAILSCALE_TAG_WAN_NO_PROXY_REGEX),
-			TAILSCALE_TAG_WAN_PROXY_REGEX: new RegExp(parsed.TAILSCALE_TAG_WAN_PROXY_REGEX),
-			// LAN_CIDR_RANGES is already array of strings from schema preprocess
-			LAN_CIDR_RANGES: parsed.LAN_CIDR_RANGES
-		}
-	} catch (error) {
-		if (error instanceof z.ZodError) {
-			const errors = error.issues.map((issue) => {
-				const path = issue.path.join('.')
-				return `${path}: ${issue.message}`
-			}).join('\n')
-			const validationError = new ConfigurationError(`Settings validation failed:\n${errors}`)
-			logger.error('Settings validation failed:', validationError)
-			throw validationError
-		}
-		throw error
-	}
-}
-
-/**
  * Store all settings in KV
  */
-export async function storeSettings(kv: KVNamespace, ownerId: string, settings: Partial<Settings>): Promise<void> {
+export async function storeSettings(kv: KVNamespace, ownerId: string, settings: Partial<TaskBasedSettings>): Promise<void> {
 	try {
 		const key = getSettingsKey(ownerId)
 		const data = JSON.stringify(settings)
@@ -107,14 +78,14 @@ export async function storeSettings(kv: KVNamespace, ownerId: string, settings: 
 export async function updateSettings(
 	kv: KVNamespace,
 	ownerId: string,
-	updates: Partial<Settings>
+	updates: Partial<TaskBasedSettings>
 ): Promise<void> {
 	try {
 		// Get existing settings
 		const existing = await getSettings(kv, ownerId)
 
 		// Merge with updates
-		const merged: Partial<Settings> = {
+		const merged: Partial<TaskBasedSettings> = {
 			...existing,
 			...updates,
 		}
@@ -131,11 +102,11 @@ export async function updateSettings(
 /**
  * Get a specific setting field from KV
  */
-export async function getSetting<K extends keyof Settings>(
+export async function getSetting<K extends keyof TaskBasedSettings>(
 	kv: KVNamespace,
 	ownerId: string,
 	key: K
-): Promise<Settings[K] | null> {
+): Promise<TaskBasedSettings[K] | null> {
 	const settings = await getSettings(kv, ownerId)
 	return settings[key] ?? null
 }
@@ -143,12 +114,52 @@ export async function getSetting<K extends keyof Settings>(
 /**
  * Set a specific setting field in KV
  */
-export async function setSetting<K extends keyof Settings>(
+export async function setSetting<K extends keyof TaskBasedSettings>(
 	kv: KVNamespace,
 	ownerId: string,
 	key: K,
-	value: Settings[K]
+	value: TaskBasedSettings[K]
 ): Promise<void> {
-	await updateSettings(kv, ownerId, { [key]: value } as Partial<Settings>)
+	await updateSettings(kv, ownerId, { [key]: value } as Partial<TaskBasedSettings>)
+}
+
+// ============================================================================
+// Task-Based Settings Support
+// ============================================================================
+
+/**
+ * Validate task-based settings
+ */
+export function validateTaskBasedSettings(settings: unknown): TaskBasedSettings {
+	try {
+		const parsed = taskBasedSettingsSchema.parse(settings)
+		return parsed
+	} catch (error) {
+		if (error instanceof z.ZodError) {
+			const errors = error.issues.map((issue) => {
+				const path = issue.path.join('.')
+				return `${path}: ${issue.message}`
+			}).join('\n')
+			const validationError = new ConfigurationError(`Task-based settings validation failed:\n${errors}`)
+			logger.error('Task-based settings validation failed:', validationError)
+			throw validationError
+		}
+		throw error
+	}
+}
+
+/**
+ * Mask sensitive fields in task-based settings for UI display
+ */
+export function maskTaskBasedSettings(settings: Partial<TaskBasedSettings>): Partial<TaskBasedSettings> {
+	const masked = { ...settings }
+
+	for (const key of SENSITIVE_KEYS) {
+		if (masked[key]) {
+			masked[key] = maskSecret(masked[key] as string) as any
+		}
+	}
+
+	return masked
 }
 

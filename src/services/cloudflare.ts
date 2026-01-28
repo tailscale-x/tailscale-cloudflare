@@ -7,6 +7,7 @@ import type {
 	AAAARecordParam,
 	CNAMERecordParam,
 	TXTRecordParam,
+	SRVRecordParam,
 	RecordBatchParams,
 	RecordListParams,
 } from 'cloudflare/resources/dns/records'
@@ -203,7 +204,7 @@ export class CloudflareClient {
 	 */
 	async batchDeleteAndCreate(
 		recordsToDelete: RecordResponse[],
-		recordsToCreate: (ARecordParam | AAAARecordParam | CNAMERecordParam | TXTRecordParam)[]
+		recordsToCreate: (ARecordParam | AAAARecordParam | CNAMERecordParam | TXTRecordParam | SRVRecordParam)[]
 	): Promise<void> {
 		// If no operations, return early
 		if (recordsToDelete.length === 0 && recordsToCreate.length === 0) {
@@ -225,7 +226,7 @@ export class CloudflareClient {
 			deletions.push({ zoneId, id: record.id })
 		}
 
-		const creations: { zoneId: string; record: ARecordParam | AAAARecordParam | CNAMERecordParam | TXTRecordParam }[] = []
+		const creations: { zoneId: string; record: ARecordParam | AAAARecordParam | CNAMERecordParam | TXTRecordParam | SRVRecordParam }[] = []
 		for (const record of recordsToCreate) {
 			const zoneId = await this.getZoneIdFromDomain(record.name)
 			if (zoneId) {
@@ -236,7 +237,7 @@ export class CloudflareClient {
 		const deletesByZone = Object.groupBy(deletions, (item: { zoneId: string; id: string }) => item.zoneId)
 		const createsByZone = Object.groupBy(
 			creations,
-			(item: { zoneId: string; record: ARecordParam | AAAARecordParam | CNAMERecordParam | TXTRecordParam }) => item.zoneId
+			(item: { zoneId: string; record: ARecordParam | AAAARecordParam | CNAMERecordParam | TXTRecordParam | SRVRecordParam }) => item.zoneId
 		)
 
 		const zoneIds = new Set([...Object.keys(deletesByZone), ...Object.keys(createsByZone)])

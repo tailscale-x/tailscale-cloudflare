@@ -6,15 +6,19 @@ import type { PathsForPages, GetConfigResponse } from 'waku/router';
 // prettier-ignore
 import type { getConfig as File_About_getConfig } from './pages/about';
 // prettier-ignore
-import type { getConfig as File_Config_getConfig } from './pages/config';
+import type { getConfig as File_ConfigTasks_getConfig } from './pages/config-tasks';
 // prettier-ignore
 import type { getConfig as File_Index_getConfig } from './pages/index';
+// prettier-ignore
+import type { getConfig as File_Status_getConfig } from './pages/status';
 
 // prettier-ignore
 type Page =
 | ({ path: '/about' } & GetConfigResponse<typeof File_About_getConfig>)
-| ({ path: '/config' } & GetConfigResponse<typeof File_Config_getConfig>)
-| ({ path: '/' } & GetConfigResponse<typeof File_Index_getConfig>);
+| ({ path: '/config-tasks' } & GetConfigResponse<typeof File_ConfigTasks_getConfig>)
+| { path: '/credentials'; render: 'static' }
+| ({ path: '/' } & GetConfigResponse<typeof File_Index_getConfig>)
+| ({ path: '/status' } & GetConfigResponse<typeof File_Status_getConfig>);
 
 // prettier-ignore
 declare module 'waku/router' {

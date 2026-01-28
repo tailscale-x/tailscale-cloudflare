@@ -3,6 +3,7 @@ import '../styles.css';
 import type { ReactNode } from 'react';
 import { Footer } from '../components/footer';
 import { Header } from '../components/header';
+import { Toaster } from '../components/ui/sonner';
 
 type RootLayoutProps = { children: ReactNode };
 
@@ -21,10 +22,11 @@ export default async function RootLayout({ children }: RootLayoutProps) {
         precedence="font"
       />
       <Header />
-      <main className="m-6 flex items-center *:min-h-64 *:min-w-64 lg:m-0 lg:min-h-svh lg:justify-center">
+      <main className="pt-24 pb-20 min-h-svh">
         {children}
       </main>
       <Footer />
+      <Toaster />
     </div>
   );
 }

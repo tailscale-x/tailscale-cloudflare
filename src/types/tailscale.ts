@@ -29,11 +29,6 @@ export interface TailscaleWebhookEvent {
 	node: TailscaleDevice
 }
 
-export interface ClassifiedIPs {
-	tailscaleIP?: string
-	lanIP?: string // Single LAN IP (one selected from available)
-	wanIPs?: string[] // Multiple WAN IPs for round-robin
-}
 
 export interface TailscaleACL {
 	hosts?: Record<string, string> // Map of host aliases to IP addresses

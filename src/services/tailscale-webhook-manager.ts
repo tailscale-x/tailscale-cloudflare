@@ -1,9 +1,7 @@
-// Webhook Manager Service
-
 import type { TailscaleClient } from './tailscale-client'
 import type { TailscaleWebhook, TailscaleWebhookEventType } from '../types/tailscale'
 import { createLogger } from '../utils/logger'
-import type { ParsedSettings } from '../types/settings'
+import type { TaskBasedSettings } from '../types/task-based-settings'
 import { TailscaleClient as TailscaleClientClass, REQUIRED_WEBHOOK_SUBSCRIPTIONS } from './tailscale-client'
 import { setSetting } from '../utils/kv-storage'
 
@@ -104,7 +102,7 @@ export class WebhookManager {
 				webhook: newWebhook,
 				created: true,
 				updated: false,
-				secret: newWebhook.secret,
+				...(newWebhook.secret ? { secret: newWebhook.secret } : {}),
 				message: `Webhook ${newWebhook.endpointId} created successfully. Secret will be automatically stored in KV.`,
 			}
 		} catch (error) {
@@ -143,7 +141,7 @@ export interface WebhookSetupResult {
  * This is a convenience function that handles the full webhook setup flow
  */
 export async function setupWebhookWithKv(
-	settings: ParsedSettings,
+	settings: TaskBasedSettings,
 	kv: KVNamespace,
 	webhookUrl: string,
 	ownerId: string
@@ -153,7 +151,6 @@ export async function setupWebhookWithKv(
 	const tailscaleClient = new TailscaleClientClass({
 		apiKey: settings.TAILSCALE_API_KEY,
 		tailnet: settings.TAILSCALE_TAILNET,
-		lanCidrRanges: settings.LAN_CIDR_RANGES,
 	})
 
 	const webhookManager = new WebhookManager({

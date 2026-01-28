@@ -1,9 +1,9 @@
 import { env } from 'cloudflare:workers';
 import type { Env } from '../types/env';
-import { TailscaleMachineSyncService } from '../services/tailscale-machine-sync';
+import { TaskBasedDNSService } from '../services/task-based-dns-service';
 import { createLogger } from '../utils/logger';
 import { setupWebhookWithKv } from '../services/tailscale-webhook-manager';
-import { getSetting, getSettings, validateSettings } from '../utils/kv-storage';
+import { getSetting, getSettings, validateTaskBasedSettings } from '../utils/kv-storage';
 
 const logger = createLogger();
 
@@ -20,7 +20,7 @@ export async function handleScheduled(event: ScheduledEvent): Promise<void> {
 
 		// Load settings manually since we are not in HTTP context
 		const rawSettings = await getSettings(cfEnv.CONFIG_KV, ownerId);
-		const settings = validateSettings(rawSettings);
+		const settings = validateTaskBasedSettings(rawSettings);
 
 		// Verify and create webhook if webhook URL is stored in KV
 		const webhookUrl = await getSetting(cfEnv.CONFIG_KV, ownerId, 'webhookUrl');
@@ -39,7 +39,7 @@ export async function handleScheduled(event: ScheduledEvent): Promise<void> {
 		}
 
 		// Perform full DNS sync
-		await TailscaleMachineSyncService.performSync(settings, ownerId);
+		await TaskBasedDNSService.performSync(settings, ownerId);
 		logger.info('Cron job completed successfully');
 	} catch (error) {
 		logger.error('Cron job error:', error);

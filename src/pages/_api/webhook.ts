@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:workers';
 import type { Env } from '../../types/env';
-import { getSettings, validateSettings, setSetting, getSetting } from '../../utils/kv-storage';
-import { TailscaleMachineSyncService } from '../../services/tailscale-machine-sync';
+import { getSettings, validateTaskBasedSettings, setSetting, getSetting } from '../../utils/kv-storage';
+import { TaskBasedDNSService } from '../../services/task-based-dns-service';
 import { validateWebhookSignature, extractWebhookUrlFromRequest } from '../../utils/webhook';
 import { setupWebhookWithKv } from '../../services/tailscale-webhook-manager';
 import { createLogger } from '../../utils/logger';
@@ -17,7 +17,7 @@ export const POST = async (request: Request): Promise<Response> => {
 
         // Load and validate settings
         const rawSettings = await getSettings(cfEnv.CONFIG_KV, ownerId);
-        const settings = validateSettings(rawSettings);
+        const settings = validateTaskBasedSettings(rawSettings);
 
         const body = await request.text();
         const signature = request.headers.get('X-Tailscale-Signature') || null;
@@ -37,7 +37,7 @@ export const POST = async (request: Request): Promise<Response> => {
         const event: TailscaleWebhookEvent = JSON.parse(body);
 
         // Always sync all machines regardless of event type
-        const result = await TailscaleMachineSyncService.performSync(settings, ownerId);
+        const result = await TaskBasedDNSService.performSync(settings, ownerId);
 
         logger.info(`Webhook processed successfully: ${event.event}`);
         return Response.json({

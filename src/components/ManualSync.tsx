@@ -1,7 +1,7 @@
 'use client';
 
 import { useTransition, useState } from 'react';
-import { manualSyncAction } from '../actions';
+import { taskBasedManualSyncAction } from '../actions';
 
 export function ManualSync() {
     const [isPending, startTransition] = useTransition();
@@ -10,7 +10,7 @@ export function ManualSync() {
     const handleSync = () => {
         setResult(null);
         startTransition(async () => {
-            const res = await manualSyncAction();
+            const res = await taskBasedManualSyncAction();
             setResult(res);
         });
     };

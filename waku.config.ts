@@ -9,6 +9,7 @@ export default defineConfig({
   vite: {
     resolve: {
       alias: {
+        '@': path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'src'),
         'cloudflare/_shims/auto/runtime': path.resolve(
           path.dirname(fileURLToPath(import.meta.url)),
           'node_modules/cloudflare/_shims/auto/runtime.mjs'
