@@ -162,50 +162,35 @@ export function StatusPageContent() {
             {/* Changes Detail */}
             {!isSynced && status && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {status.added.length > 0 && (
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>To Be Added</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <ul className="divide-y max-h-60 overflow-y-auto">
-                                    {status.added.map((record, idx) => (
-                                        <li key={idx} className="py-3">
-                                            <div className="flex items-center justify-between">
-                                                <p className="text-sm font-medium text-primary truncate">{record.name}</p>
-                                                <Badge variant="secondary">{record.type}</Badge>
-                                            </div>
-                                            <div className="mt-1 flex items-center justify-between text-sm text-muted-foreground">
-                                                <span className="font-mono text-xs">{record.content}</span>
-                                                {record.proxied && <Badge variant="outline" className="ml-2 text-orange-600 border-orange-200">Proxied</Badge>}
-                                            </div>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </CardContent>
-                        </Card>
-                    )}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>To Be Added</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="max-h-60 overflow-y-auto">
+                                <DNSRecordTable
+                                    records={status.added}
+                                    showMachineName={false}
+                                    emptyMessage="No records to add."
+                                />
+                            </div>
+                        </CardContent>
+                    </Card>
 
-                    {status.deleted.length > 0 && (
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>To Be Deleted</CardTitle>
-                            </CardHeader>
-                            <CardContent>
-                                <ul className="divide-y max-h-60 overflow-y-auto">
-                                    {status.deleted.map((record, idx) => (
-                                        <li key={idx} className="py-3">
-                                            <div className="flex items-center justify-between">
-                                                <p className="text-sm font-medium truncate">{record.name}</p>
-                                                <Badge variant="outline">{record.type}</Badge>
-                                            </div>
-                                            <p className="mt-1 text-sm text-muted-foreground font-mono text-xs">{record.content}</p>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </CardContent>
-                        </Card>
-                    )}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>To Be Deleted</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="max-h-60 overflow-y-auto">
+                                <DNSRecordTable
+                                    records={status.deleted}
+                                    showMachineName={false}
+                                    emptyMessage="No records to delete."
+                                />
+                            </div>
+                        </CardContent>
+                    </Card>
                 </div>
             )}
 
