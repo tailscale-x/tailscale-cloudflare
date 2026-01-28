@@ -8,6 +8,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { CheckCircle2, AlertTriangle, RefreshCw } from 'lucide-react'
+import { DNSRecordTable } from '@/components/DNSRecordTable'
 
 interface SyncResult {
     added: any[]
@@ -121,7 +122,7 @@ export function StatusPageContent() {
             </div>
 
             {/* Status Card */}
-            <Card className={isSynced ? 'border-green-200 bg-green-50 dark:bg-green-950' : 'border-yellow-200 bg-yellow-50 dark:bg-yellow-950'}>
+            <Card className={isSynced ? 'border-green-200 bg-green-50 dark:bg-green-900/20' : 'border-yellow-200 bg-yellow-50 dark:bg-yellow-900/20'}>
                 <CardContent className="pt-6">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-4">
@@ -223,42 +224,11 @@ export function StatusPageContent() {
                 </CardHeader>
                 <CardContent>
                     <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                            <thead>
-                                <tr className="border-b">
-                                    <th className="text-left p-3 font-medium">Name</th>
-                                    <th className="text-left p-3 font-medium">Type</th>
-                                    <th className="text-left p-3 font-medium">Content</th>
-                                    <th className="text-left p-3 font-medium">Details</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {status?.managed && status.managed.length > 0 ? (
-                                    status.managed.map((record, idx) => (
-                                        <tr key={idx} className="border-b hover:bg-muted/50 transition-colors">
-                                            <td className="p-3 font-medium">{record.name}</td>
-                                            <td className="p-3">
-                                                <Badge variant="secondary">{record.type}</Badge>
-                                            </td>
-                                            <td className="p-3 font-mono text-xs">{record.content}</td>
-                                            <td className="p-3">
-                                                {record.proxied && (
-                                                    <Badge variant="outline" className="text-orange-600 border-orange-200">
-                                                        Proxied
-                                                    </Badge>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))
-                                ) : (
-                                    <tr>
-                                        <td colSpan={4} className="p-12 text-center text-muted-foreground">
-                                            No managed records found.
-                                        </td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
+                        <DNSRecordTable
+                            records={status?.managed || []}
+                            showMachineName={false}
+                            emptyMessage="No managed records found."
+                        />
                     </div>
                 </CardContent>
             </Card>

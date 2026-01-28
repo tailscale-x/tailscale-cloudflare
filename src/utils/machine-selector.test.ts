@@ -232,7 +232,37 @@ describe('Machine Selector', () => {
                 expect(field.value).toBeTruthy()
                 expect(field.label).toBeTruthy()
                 expect(field.description).toBeTruthy()
+                expect(field.type).toBeTruthy()
             }
+        })
+
+        it('should extract unique tags from devices', () => {
+            const fields = getSupportedFields()
+            const tagField = fields.find(f => f.value === 'tag')
+            expect(tagField).toBeDefined()
+            expect(tagField?.type).toBe('autocomplete')
+            expect(tagField?.getUniqueValues).toBeDefined()
+
+            const tags = tagField!.getUniqueValues!(mockDevices)
+            expect(tags).toEqual(['tag:api', 'tag:database', 'tag:prod', 'tag:staging', 'tag:web'])
+        })
+
+        it('should extract unique machine names from devices', () => {
+            const fields = getSupportedFields()
+            const nameField = fields.find(f => f.value === 'name')
+            expect(nameField).toBeDefined()
+
+            const names = nameField!.getUniqueValues!(mockDevices)
+            expect(names).toEqual(['api-gateway', 'db-server', 'web-server'])
+        })
+
+        it('should extract unique hostnames from devices', () => {
+            const fields = getSupportedFields()
+            const hostnameField = fields.find(f => f.value === 'hostname')
+            expect(hostnameField).toBeDefined()
+
+            const hostnames = hostnameField!.getUniqueValues!(mockDevices)
+            expect(hostnames).toEqual(['api-gateway', 'db-server', 'web-server'])
         })
     })
 })

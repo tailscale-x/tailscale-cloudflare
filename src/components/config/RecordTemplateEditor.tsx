@@ -63,8 +63,8 @@ export function RecordTemplateEditor({ template, onChange, onDelete, cidrLists }
                 </div>
 
                 {showHelp && (
-                    <Alert className="bg-green-50 border-green-200 dark:bg-green-950 dark:border-green-800">
-                        <Info className="h-4 w-4" />
+                    <Alert className="bg-green-50 border-green-200 text-green-900 dark:bg-green-900/30 dark:border-green-800 dark:text-green-200">
+                        <Info className="h-4 w-4 text-green-600 dark:text-green-400" />
                         <AlertDescription>
                             <strong className="block mb-2">Available Template Variables:</strong>
                             <ul className="grid grid-cols-2 md:grid-cols-3 gap-1 mb-2 list-disc list-inside">
@@ -120,15 +120,15 @@ export function RecordTemplateEditor({ template, onChange, onDelete, cidrLists }
                         <Input
                             id="ttl"
                             type="number"
-                            value={template.ttl || 3600}
-                            onChange={(e) => onChange({ ...template, ttl: parseInt(e.target.value) || 3600 })}
+                            value={template.ttl || 300}
+                            onChange={(e) => onChange({ ...template, ttl: parseInt(e.target.value) || 300 })}
                             min="60"
                             max="86400"
                         />
                     </div>
 
                     {supportsProxy && (
-                        <div className="flex items-center space-x-2 pt-8">
+                        <div className="flex items-center space-x-2 pt-8 align-bottom h-full">
                             <Checkbox
                                 id="proxied"
                                 checked={template.proxied || false}
@@ -139,11 +139,29 @@ export function RecordTemplateEditor({ template, onChange, onDelete, cidrLists }
                             </Label>
                         </div>
                     )}
+
+                    {supportsProxy && (
+                        <div className="space-y-2 col-span-2 md:col-span-1">
+                            <Label htmlFor="srv-prefix" className="flex items-center space-x-2">
+                                <span>SRV Prefix (optional)</span>
+                            </Label>
+                            <Input
+                                id="srv-prefix"
+                                type="text"
+                                value={template.srvPrefix || ''}
+                                onChange={(e) => onChange({ ...template, srvPrefix: e.target.value })}
+                                placeholder="_http._tcp"
+                                className="font-mono"
+                            />
+                        </div>
+                    )}
                 </div>
 
-                {isSRV && (
-                    <div className="p-4 bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 rounded-lg space-y-4">
-                        <div className="font-medium text-sm text-yellow-900 dark:text-yellow-100">SRV Record Configuration:</div>
+                {(isSRV || (supportsProxy && template.srvPrefix)) && (
+                    <div className="p-4 border rounded-lg space-y-4">
+                        <div className="font-medium text-sm text-foreground">
+                            {isSRV ? 'SRV Record Configuration' : 'Associated SRV Configuration'}
+                        </div>
                         <div className="grid grid-cols-3 gap-4">
                             <div className="space-y-2">
                                 <Label htmlFor="priority">Priority</Label>
@@ -151,7 +169,7 @@ export function RecordTemplateEditor({ template, onChange, onDelete, cidrLists }
                                     id="priority"
                                     type="number"
                                     value={template.priority || 10}
-                                    onChange={(e) => onChange({ ...template, priority: parseInt(e.target.value) || 10 })}
+                                    onChange={(e) => onChange({ ...template, priority: parseInt(e.target.value) || 0 })}
                                     min="0"
                                 />
                             </div>
@@ -161,7 +179,7 @@ export function RecordTemplateEditor({ template, onChange, onDelete, cidrLists }
                                     id="weight"
                                     type="number"
                                     value={template.weight || 10}
-                                    onChange={(e) => onChange({ ...template, weight: parseInt(e.target.value) || 10 })}
+                                    onChange={(e) => onChange({ ...template, weight: parseInt(e.target.value) || 0 })}
                                     min="0"
                                 />
                             </div>

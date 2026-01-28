@@ -32,10 +32,13 @@ export interface RecordTemplate {
     ttl?: number
     proxied?: boolean // For A/AAAA/CNAME records
 
-    // SRV-specific fields
+    // SRV-specific fields (also used for Associated SRV)
     priority?: number;
     weight?: number;
     port?: number;
+
+    // If set, generates an associated SRV record (e.g. "_http._tcp") pointing to this record
+    srvPrefix?: string;
 }
 
 /**
@@ -140,20 +143,27 @@ export const recordTemplateSchema = z.object({
     ttl: z.number().int().positive().optional(),
     proxied: z.boolean().optional(),
 
-    // SRV-specific fields
+    // SRV-specific fields (also used for Associated SRV)
     priority: z.number().int().min(0).default(10),
     weight: z.number().int().min(0).default(10),
     port: z.number().int().min(1).max(65535).default(80),
+
+    // Associated SRV prefix
+    srvPrefix: z.string().optional(),
 }).refine(
     (data) => {
         // If recordType is SRV, require priority, weight, and port fields
         if (data.recordType === 'SRV') {
             return data.priority !== undefined && data.weight !== undefined && data.port !== undefined
         }
+
+        // If associated SRV is used (srvPrefix set), we generally want valid port/pri/weight 
+        // but they have defaults in the schema above so they are always present.
+
         return true
     },
     {
-        message: 'SRV records require priority, weight, and port fields',
+        message: 'SRV records require priority/weight/port',
     }
 )
 

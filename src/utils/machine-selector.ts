@@ -190,22 +190,59 @@ export function validateSelector(selector: MachineSelector): { valid: boolean; e
  * Get supported field types
  * Can be extended in the future
  */
-export function getSupportedFields(): Array<{ value: string; label: string; description: string }> {
+export type FieldType = 'text' | 'autocomplete'
+
+export interface SupportedField {
+    value: string
+    label: string
+    description: string
+    type: FieldType
+    getUniqueValues?: (devices: TailscaleDevice[]) => string[]
+}
+
+/**
+ * Get supported field types
+ * Can be extended in the future
+ */
+export function getSupportedFields(): SupportedField[] {
     return [
         {
             value: 'tag',
             label: 'Tag',
             description: 'Match against Tailscale tags (e.g., "tag:lan", "tag:web")',
+            type: 'autocomplete',
+            getUniqueValues: (devices) => {
+                const tags = new Set<string>()
+                devices.forEach((d) => d.tags?.forEach((t) => tags.add(t)))
+                return Array.from(tags).sort()
+            },
         },
         {
             value: 'name',
             label: 'Machine Name',
             description: 'Match against machine name (first part of hostname)',
+            type: 'autocomplete',
+            getUniqueValues: (devices) => {
+                const names = new Set<string>()
+                devices.forEach((d) => {
+                    const name = d.name?.split('.').shift()
+                    if (name) names.add(name)
+                })
+                return Array.from(names).sort()
+            },
         },
         {
             value: 'hostname',
             label: 'Full Hostname',
             description: 'Match against full hostname including domain',
+            type: 'autocomplete',
+            getUniqueValues: (devices) => {
+                const hostnames = new Set<string>()
+                devices.forEach((d) => {
+                    if (d.hostname) hostnames.add(d.hostname)
+                })
+                return Array.from(hostnames).sort()
+            },
         },
         // Future fields can be added here:
         // { value: 'os', label: 'Operating System', description: 'Match against device OS' },

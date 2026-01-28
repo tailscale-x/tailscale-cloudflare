@@ -1,6 +1,7 @@
 'use client'
 
 import type { GenerationTask, NamedCIDRList, MachineSelector } from '../../types/task-based-settings'
+import type { TailscaleDevice } from '../../types/tailscale' // Import TailscaleDevice
 import { FormField } from '../common/FormField'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -13,6 +14,7 @@ interface TaskFormProps {
     onUpdateName: (name: string) => void
     onUpdateDescription: (description: string) => void
     onUpdateSelector: (selector: MachineSelector) => void
+    devices?: TailscaleDevice[]
 }
 
 export function TaskForm({
@@ -21,6 +23,7 @@ export function TaskForm({
     onUpdateName,
     onUpdateDescription,
     onUpdateSelector,
+    devices = [],
 }: TaskFormProps) {
     return (
         <div className="space-y-6">
@@ -46,7 +49,7 @@ export function TaskForm({
 
             <div className="space-y-2">
                 <h5 className="font-semibold">Machine Selector</h5>
-                <MachineSelectorInput selector={task.machineSelector} onChange={onUpdateSelector} />
+                <MachineSelectorInput selector={task.machineSelector} onChange={onUpdateSelector} devices={devices} />
             </div>
         </div>
     )

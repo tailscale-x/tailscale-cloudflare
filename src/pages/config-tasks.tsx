@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:workers';
 import type { Env } from '../types/env';
-import { getTaskBasedConfigAction, saveTaskBasedConfigAction } from '../actions';
+import { getTaskBasedConfigAction, saveTaskBasedConfigAction, getTailscaleDevicesAction } from '../actions';
 import { TaskBasedConfigForm } from '../components/config/TaskBasedConfigForm';
 
 export default async function TaskBasedConfigPage() {
@@ -8,6 +8,9 @@ export default async function TaskBasedConfigPage() {
 
     // Load current task-based configuration
     const configResult = await getTaskBasedConfigAction();
+    // Load devices for autocomplete
+    const devicesResult = await getTailscaleDevicesAction();
+    const devices = devicesResult.success ? devicesResult.devices : [];
 
     if (!configResult.success) {
         return (
@@ -39,6 +42,7 @@ export default async function TaskBasedConfigPage() {
             <TaskBasedConfigForm
                 initialSettings={configResult.settings || {}}
                 onSave={saveTaskBasedConfigAction}
+                devices={devices || []}
             />
         </div>
     );

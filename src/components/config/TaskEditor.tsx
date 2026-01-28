@@ -13,15 +13,18 @@ import { toast } from 'sonner'
 import { saveGenerationTaskAction } from '../../actions'
 import { cn } from '@/lib/utils'
 
+import type { TailscaleDevice } from '../../types/tailscale' // ... existing imports
+
 interface TaskEditorProps {
 	task: GenerationTask
 	onSave: (task: GenerationTask) => void
 	onDelete: () => void
 	cidrLists: NamedCIDRList[]
 	isNew?: boolean
+	devices?: TailscaleDevice[]
 }
 
-export function TaskEditor({ task: initialTask, onSave, onDelete, cidrLists, isNew }: TaskEditorProps) {
+export function TaskEditor({ task: initialTask, onSave, onDelete, cidrLists, isNew, devices = [] }: TaskEditorProps) {
 	const [task, setTask] = useState<GenerationTask>(initialTask)
 	const [isExpanded, setIsExpanded] = useState(true)
 	const [isSaving, setIsSaving] = useState(false)
@@ -48,7 +51,7 @@ export function TaskEditor({ task: initialTask, onSave, onDelete, cidrLists, isN
 			recordType: 'A',
 			name: '{{machineName}}.example.com',
 			value: '{{tailscaleIP}}',
-			ttl: 3600,
+			ttl: 300,
 			proxied: false,
 		}
 
@@ -88,6 +91,7 @@ export function TaskEditor({ task: initialTask, onSave, onDelete, cidrLists, isN
 						onUpdateName={(name) => setTask({ ...task, name })}
 						onUpdateDescription={(description) => setTask({ ...task, description })}
 						onUpdateSelector={(selector) => setTask({ ...task, machineSelector: selector })}
+						devices={devices}
 					/>
 
 					<Separator />
@@ -121,6 +125,8 @@ export function TaskEditor({ task: initialTask, onSave, onDelete, cidrLists, isN
 						<RecordPreview
 							machineSelector={task.machineSelector}
 							recordTemplates={task.recordTemplates}
+							devices={devices}
+							cidrLists={cidrLists}
 						/>
 
 						<div className="flex justify-end pt-4 border-t">

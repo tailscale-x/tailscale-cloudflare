@@ -14,8 +14,7 @@ import { TailscaleClient } from './tailscale-client'
 import { CloudflareClient } from './cloudflare'
 import { createLogger } from '../utils/logger'
 import { selectMachines } from '../utils/machine-selector'
-import { evaluateTemplate, type TemplateContext } from '../utils/template-engine'
-import { extractIPsFromEndpoints } from '../utils/ip-classifier'
+import { generateRecordsFromTask, createRecordComment, type GeneratedDNSRecord } from '../utils/dns-records'
 
 const logger = createLogger()
 
@@ -42,7 +41,6 @@ export interface TaskBasedSyncResult {
 export class TaskBasedDNSService {
     // Constants for DNS record comment format
     private static readonly HERITAGE = 'cf-ts-dns'
-    private static readonly DEFAULT_TTL = 3600
     private static readonly BATCH_SIZE = 200
 
     private tailscaleClient: TailscaleClient
@@ -84,40 +82,44 @@ export class TaskBasedDNSService {
         return service.syncAllMachines(dryRun)
     }
 
-    /**
-     * Extract machine name from device
-     */
-    private getMachineName(device: TailscaleDevice): string | null {
-        return device.name?.split('.').shift() || null
-    }
 
     /**
-     * Create record comment for ownership tracking
-     */
-    private createRecordComment(machineName: string): string {
-        const base = `${TaskBasedDNSService.HERITAGE}:${this.ownerId}:`
-        const maxLength = 100
-
-        if (base.length + machineName.length <= maxLength) {
-            return `${base}${machineName}`
-        }
-
-        const availableLength = maxLength - base.length
-        const truncatedMachineName = machineName.substring(0, Math.max(0, availableLength))
-        return `${base}${truncatedMachineName}`
-    }
-
-    /**
-     * Check if record is owned by this service
+     * Check if a record is owned by this service
      */
     private isOwnedRecord(comment: string | undefined): boolean {
         if (!comment) return false
-        return (
-            comment.includes(`${TaskBasedDNSService.HERITAGE}:`) &&
-            comment.includes(`:${this.ownerId}:`)
-        )
+        return comment.startsWith(TaskBasedDNSService.HERITAGE)
     }
 
+    /**
+     * Convert internal GeneratedDNSRecord to Cloudflare API parameter format
+     */
+    private convertToCloudflareParam(record: GeneratedDNSRecord): DNSRecord {
+        if (record.type === 'SRV') {
+            return {
+                type: record.type,
+                name: record.name,
+                data: {
+                    priority: record.priority!,
+                    weight: record.weight!,
+                    port: record.port!,
+                    target: record.content
+                },
+                ttl: record.ttl,
+                proxied: record.proxied,
+                comment: record.comment || ''
+            }
+        } else {
+            return {
+                type: record.type,
+                name: record.name,
+                content: record.content,
+                ttl: record.ttl,
+                proxied: record.proxied,
+                comment: record.comment || ''
+            }
+        }
+    }
     /**
      * Generate record key for map lookups
      * Includes type, name, and content to handle multiple records with same name/type
@@ -142,175 +144,6 @@ export class TaskBasedDNSService {
         return `${type}:${name}`
     }
 
-    /**
-     * Extract Tailscale IP from device addresses
-     */
-    private getTailscaleIP(device: TailscaleDevice): string {
-        if (device.addresses && device.addresses.length > 0) {
-            const tailscaleIPs = device.addresses.filter(addr => {
-                // Tailscale IPs are typically in 100.x.y.z range or fd7a: for IPv6
-                return addr.startsWith('100.') || addr.startsWith('fd7a:')
-            })
-            if (tailscaleIPs.length > 0) {
-                return tailscaleIPs[0]!
-            }
-        }
-        return ''
-    }
-
-    /**
-     * Build template context for a device
-     */
-    private buildTemplateContext(
-        device: TailscaleDevice,
-        machineName: string,
-        captures: Record<string, string>
-    ): TemplateContext {
-        return {
-            machineName,
-            tailscaleIP: this.getTailscaleIP(device),
-            tags: device.tags || [],
-            captures,
-            namedCIDRLists: this.settings.namedCIDRLists,
-            device,
-        }
-    }
-
-    /**
-     * Create DNS record from template
-     */
-    private createRecordFromTemplate(
-        template: RecordTemplate,
-        recordName: string,
-        recordValue: string,
-        machineName: string
-    ): DNSRecord | null {
-        const comment = this.createRecordComment(machineName)
-        const ttl = template.ttl || TaskBasedDNSService.DEFAULT_TTL
-
-        switch (template.recordType) {
-            case 'A':
-                return {
-                    type: 'A',
-                    name: recordName,
-                    content: recordValue,
-                    ttl,
-                    comment,
-                    proxied: template.proxied || false,
-                } as ARecordParam
-
-            case 'AAAA':
-                return {
-                    type: 'AAAA',
-                    name: recordName,
-                    content: recordValue,
-                    ttl,
-                    comment,
-                    proxied: template.proxied || false,
-                } as AAAARecordParam
-
-            case 'CNAME':
-                return {
-                    type: 'CNAME',
-                    name: recordName,
-                    content: recordValue,
-                    ttl,
-                    comment,
-                    proxied: template.proxied || false,
-                } as CNAMERecordParam
-
-            case 'SRV':
-                // SRV record format: priority weight port target
-                // Service and protocol are part of the recordName
-                const srvPriority = template.priority ?? 10
-                const srvWeight = template.weight ?? 10
-                const srvPort = template.port ?? 80
-
-                return {
-                    type: 'SRV',
-                    name: recordName,
-                    data: {
-                        priority: srvPriority,
-                        weight: srvWeight,
-                        port: srvPort,
-                        target: recordValue,
-                    },
-                    ttl,
-                    comment,
-                } as SRVRecordParam
-
-            case 'TXT':
-                return {
-                    type: 'TXT',
-                    name: recordName,
-                    content: recordValue,
-                    ttl,
-                    comment,
-                } as TXTRecordParam
-
-            default:
-                logger.warn(`Unsupported record type: ${template.recordType}`)
-                return null
-        }
-    }
-
-    /**
-     * Generate DNS records from a single task for matched devices
-     */
-    private generateRecordsFromTask(task: GenerationTask, devices: TailscaleDevice[]): {
-        records: DNSRecord[]
-    } {
-        const records: DNSRecord[] = []
-
-        // Select machines matching the task selector
-        const selectedMachines = selectMachines(devices, task.machineSelector)
-        logger.info(`Task "${task.name}": matched ${selectedMachines.length} devices`)
-
-        for (const { device, captures } of selectedMachines) {
-            const machineName = this.getMachineName(device)
-            if (!machineName) {
-                logger.warn(`Skipping device ${device.id} - no name or hostname`)
-                continue
-            }
-
-            // Build template context
-            const context = this.buildTemplateContext(device, machineName, captures)
-
-            // Process each record template
-            for (const template of task.recordTemplates) {
-                // Evaluate name template
-                const nameResult = evaluateTemplate(template.name, context)
-                if (nameResult.error || nameResult.values.length === 0) {
-                    logger.warn(`Failed to evaluate name template for task "${task.name}": ${nameResult.error}`)
-                    continue
-                }
-
-                // Evaluate value template
-                const valueResult = evaluateTemplate(template.value, context)
-                if (valueResult.error || valueResult.values.length === 0) {
-                    logger.warn(`Failed to evaluate value template for task "${task.name}": ${valueResult.error}`)
-                    continue
-                }
-
-                // Generate records for each combination (handles multiple IPs from CIDR extraction)
-                for (const recordName of nameResult.values) {
-                    for (const recordValue of valueResult.values) {
-                        // Skip empty values
-                        if (!recordValue || recordValue.trim() === '') {
-                            continue
-                        }
-
-                        const record = this.createRecordFromTemplate(template, recordName, recordValue, machineName)
-                        if (record) {
-                            records.push(record)
-                        }
-                    }
-                }
-            }
-        }
-
-        return { records }
-    }
 
     /**
      * Convert records array to map keyed by type:name:content
@@ -446,7 +279,15 @@ export class TaskBasedDNSService {
             }
 
             logger.info(`Processing task: ${task.name}`)
-            const { records } = this.generateRecordsFromTask(task, devices)
+            const { records: generatedRecords } = generateRecordsFromTask(
+                task,
+                devices,
+                this.settings.namedCIDRLists,
+                { ownerId: this.ownerId }
+            )
+
+            // Convert to Cloudflare param format
+            const records: DNSRecord[] = generatedRecords.map(r => this.convertToCloudflareParam(r))
 
             // Add to expected records map
             for (const record of records) {

@@ -3,6 +3,7 @@
 import { useState, useTransition, type FormEvent } from 'react'
 import { toast } from 'sonner'
 import type { TaskBasedSettings, GenerationTask } from '../../types/task-based-settings'
+import type { TailscaleDevice } from '../../types/tailscale'
 import { Button } from '@/components/ui/button'
 import { Section } from '../common/Section'
 import { CredentialsNotice } from './CredentialsNotice'
@@ -13,9 +14,10 @@ import { deleteGenerationTaskAction } from '../../actions'
 interface TaskBasedConfigFormProps {
     initialSettings: Partial<TaskBasedSettings>
     onSave: (settings: Partial<TaskBasedSettings>) => Promise<{ success: boolean; message?: string; error?: string }>
+    devices?: TailscaleDevice[]
 }
 
-export function TaskBasedConfigForm({ initialSettings, onSave }: TaskBasedConfigFormProps) {
+export function TaskBasedConfigForm({ initialSettings, onSave, devices = [] }: TaskBasedConfigFormProps) {
     const [formData, setFormData] = useState<Partial<TaskBasedSettings>>({
         namedCIDRLists: initialSettings.namedCIDRLists || [],
         generationTasks: initialSettings.generationTasks || [],
@@ -43,14 +45,14 @@ export function TaskBasedConfigForm({ initialSettings, onSave }: TaskBasedConfig
             enabled: true,
             machineSelector: {
                 field: 'tag',
-                pattern: 'tag:',
+                pattern: '',
             },
             recordTemplates: [
                 {
                     recordType: 'A',
                     name: '{{machineName}}.example.com',
                     value: '{{tailscaleIP}}',
-                    ttl: 3600,
+                    ttl: 300,
                     proxied: false,
                 },
             ],
@@ -132,6 +134,7 @@ export function TaskBasedConfigForm({ initialSettings, onSave }: TaskBasedConfig
                                 onDelete={() => deleteTask(index)}
                                 cidrLists={formData.namedCIDRLists || []}
                                 isNew={task.id === newTaskId}
+                                devices={devices}
                             />
                         ))}
                     </div>
