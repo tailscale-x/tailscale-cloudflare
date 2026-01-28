@@ -6,7 +6,7 @@
     },
     "mounts": [
         "source=${localEnv:HOME}/.wrangler,target=/home/vscode/.wrangler,type=bind",
-        "source=${localEnv:HOME}/.gitconfig,target=/home/vscode/.gitconfig,type=bind"
+        "source=${localEnv:HOME}/.gitconfig,target=/home/vscode/.gitconfig,type=bind",
         "source=cursor-config,target=/home/vscode/.cursor,type=volume",
         "source=claude-config,target=/home/vscode/.claude,type=volume",
         "source=aws-config,target=/home/vscode/.aws,type=volume",
