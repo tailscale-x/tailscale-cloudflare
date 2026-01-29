@@ -158,10 +158,21 @@ export function generateRecordsFromTask(
                         ['A', 'AAAA', 'CNAME'].includes(template.recordType)
                     ) {
                         const srvName = `${template.srvPrefix}.${recordName}`
+
+                        // Determine SRV target: custom target (if set) or default to record name
+                        let srvTarget = recordName
+                        if (template.srvTarget) {
+                            const targetResult = evaluateTemplate(template.srvTarget, context)
+                            // If template evaluates successfully, use the first result
+                            if (!targetResult.error && targetResult.values.length > 0 && targetResult.values[0]) {
+                                srvTarget = targetResult.values[0]
+                            }
+                        }
+
                         records.push({
                             type: 'SRV',
                             name: srvName,
-                            content: recordName, // Target is the name of the main record
+                            content: srvTarget,
                             ttl: template.ttl || 300,
                             proxied: false,
                             priority: template.priority ?? 10,

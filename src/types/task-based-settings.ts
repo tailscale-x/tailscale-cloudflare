@@ -39,6 +39,10 @@ export interface RecordTemplate {
 
     // If set, generates an associated SRV record (e.g. "_http._tcp") pointing to this record
     srvPrefix?: string;
+
+    // Optional target hostname for the associated SRV record
+    // If not provided, defaults to the generated record name
+    srvTarget?: string;
 }
 
 /**
@@ -150,6 +154,7 @@ export const recordTemplateSchema = z.object({
 
     // Associated SRV prefix
     srvPrefix: z.string().optional(),
+    srvTarget: z.string().optional(),
 }).refine(
     (data) => {
         // If recordType is SRV, require priority, weight, and port fields

@@ -22,14 +22,26 @@ export function DNSRecordTable({
 
     const formatContent = (record: any) => {
         if (record.type === 'SRV') {
-            // Handle GeneratedDNSRecord (flattened fields)
-            if (record.priority !== undefined) {
-                return `${record.priority} ${record.weight} ${record.port} ${record.content}`
-            }
-            // Handle Cloudflare RecordResponse (nested data)
+            // Priority 1: Cloudflare RecordResponse (nested data)
             if (record.data) {
-                return `${record.data.priority} ${record.data.weight} ${record.data.port} ${record.data.target}`
+                const { priority, weight, port, target } = record.data
+                return (
+                    <span className="font-mono">
+                        <span className="text-muted-foreground">P:</span>{priority ?? '?'} <span className="text-muted-foreground">W:</span>{weight ?? '?'} <span className="text-muted-foreground">P:</span>{port ?? '?'} <span className="text-foreground">{target}</span>
+                    </span>
+                )
             }
+            // Priority 2: GeneratedDNSRecord (flattened fields)
+            if (record.priority !== undefined && record.weight !== undefined && record.port !== undefined) {
+                return (
+                    <span className="font-mono">
+                        <span className="text-muted-foreground">P:</span>{record.priority} <span className="text-muted-foreground">W:</span>{record.weight} <span className="text-muted-foreground">P:</span>{record.port} <span className="text-foreground">{record.content}</span>
+                    </span>
+                )
+            }
+            // Fallback for weird cases: try parsing content if it looks like SRV parts
+            // Sometimes top-level priority leaks but content has the rest
+            // Treat content as the source of truth if other fields missing
         }
         return record.content
     }

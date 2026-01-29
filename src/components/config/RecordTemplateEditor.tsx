@@ -195,6 +195,25 @@ export function RecordTemplateEditor({ template, onChange, onDelete, cidrLists }
                                 />
                             </div>
                         </div>
+                        {/* Target Hostname for Associated SRV (only relevant when srvPrefix is set) */}
+                        {template.srvPrefix && !isSRV && (
+                            <div className="space-y-2">
+                                <Label htmlFor="srv-target">
+                                    Target Hostname (Optional)
+                                    <span className="block text-xs text-muted-foreground font-normal mt-1">
+                                        Defaults to the main record name if left empty. Use variables.
+                                    </span>
+                                </Label>
+                                <Input
+                                    id="srv-target"
+                                    type="text"
+                                    value={template.srvTarget || ''}
+                                    onChange={(e) => onChange({ ...template, srvTarget: e.target.value })}
+                                    placeholder="Defaults to record name (e.g., {{machineName}}.example.com)"
+                                    className="font-mono"
+                                />
+                            </div>
+                        )}
                     </div>
                 )}
             </CardContent>
