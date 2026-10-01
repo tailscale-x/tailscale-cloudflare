@@ -42,7 +42,7 @@ saved() {
 prompt() {
     label=$1
     current=$2
-    if [ ! -r /dev/tty ]; then
+    if [ ! -t 1 ] || [ ! -r /dev/tty ]; then
         [ -n "$current" ] || { echo "$label is required in noninteractive mode" >&2; exit 2; }
         printf '%s' "$current"
         return
@@ -75,7 +75,7 @@ mkdir -p "$base/secrets" "$(dirname "$config")"
 chmod 700 "$base" "$base/secrets" "$(dirname "$config")"
 join_file="$base/secrets/tailscale_auth_key"
 if [ "$reuse_state" != true ]; then
-    if [ -r /dev/tty ]; then
+    if [ -t 1 ] && [ -r /dev/tty ]; then
         printf 'One-use Tailscale join key (Enter to reuse saved node state): ' > /dev/tty
         stty -echo < /dev/tty
         trap 'stty echo < /dev/tty' 0 1 2 3 15
