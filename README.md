@@ -34,24 +34,22 @@ If the gateway is absent or has ambiguous public endpoints, sync reports an erro
 
 ## Deploy the gateway
 
-Install Docker on the Ubuntu server and ensure `ubuntu` has Docker access from a new login:
+The installer uses `docker run`. If Docker is missing, it runs the Docker installation script and adds the invoking user to the `docker` group. Start a fresh login afterward to use Docker without `sudo`.
 
 ```sh
-curl -fsSL https://get.docker.com | sh
-sudo usermod -aG docker ubuntu
+curl -fsSL https://raw.githubusercontent.com/tailscale-x/tailscale-cloudflare/main/gateway/install.sh | sh
 ```
 
-Copy [`gateway/`](gateway/) to the server. Run `./install.sh` there. On first run it writes a private `.env.example` copy and asks you to edit the machine name, certificate contact email, and versioned image tag. On the second run it prompts for the one-use join key, mounts it as a private file for first boot, and deletes the file after the node joins. The gateway image contains its fixed Caddyfile; no Worker, Cloudflare, or Tailscale API credential is sent to Caddy.
+The script prompts for the gateway machine name, certificate contact email, and a one-use join key. You can pass `--hostname`, `--email`, and `--image` after `sh -s --` to automate non-secret settings. It runs the versioned image with persistent named volumes and removes the temporary join-key file after successful Tailscale login. The gateway image contains its fixed Caddyfile; no Worker, Cloudflare, or Tailscale API credential is sent to Caddy.
 
-Use the same Compose project name and named volumes when replacing the previous sidecar stack. Stop the old stack with `docker compose down` and retain its volumes. The new single service reuses `tailscale_state`, `caddy_data`, and `caddy_config`. Do not run old and new stacks on ports 80/443 simultaneously.
+On the existing VPS, the script stops the old sidecar and reuses its `tailscale-cloudflare-gateway_tailscale_state` volume. It keeps the old container available until the new gateway joins. New servers use the same volume names for Tailscale state and Caddy data. The image must be public on GHCR for an unauthenticated first-time pull.
 
 After joining, sync the Worker and check the A, CNAME, SRV, and backend A records before sending public traffic. Caddy uses `_gateway._tcp.{host}` to choose the HTTP backend, redirects HTTP to HTTPS, and obtains public certificates on demand. Its local permission endpoint allows certificate attempts for any hostname reaching Caddy; ACME validation still controls issuance. A hostname without SRV has no upstream.
 
-To update or roll back, edit `CADDY_IMAGE` in the server-local `.env` to the desired published tag and run:
+To update or roll back, run the installer again with `--image` set to the desired published tag. Existing non-secret settings are loaded from the server-local settings file; `--reuse-state` skips the join-key prompt:
 
 ```sh
-docker compose -f compose.yaml pull gateway
-docker compose -f compose.yaml up -d gateway
+curl -fsSL https://raw.githubusercontent.com/tailscale-x/tailscale-cloudflare/main/gateway/install.sh | sh -s -- --image ghcr.io/tailscale-x/tailscale-cloudflare-caddy:v0.1.0 --reuse-state
 ```
 
-The same named volumes preserve the node identity and certificates. The image workflow validates the Caddyfile and Compose configuration on `main` and publishes `ghcr.io/tailscale-x/tailscale-cloudflare-caddy:<version-tag>` on version tags.
+The same named volumes preserve the node identity and certificates. The image workflow validates the Caddyfile and installer on `main` and publishes `ghcr.io/tailscale-x/tailscale-cloudflare-caddy:<version-tag>` on version tags.
