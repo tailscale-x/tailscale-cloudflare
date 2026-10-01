@@ -40,7 +40,7 @@ The installer uses `docker run`. If Docker is missing, it runs the Docker instal
 curl -fsSL https://raw.githubusercontent.com/tailscale-x/tailscale-cloudflare/main/gateway/install.sh | sh
 ```
 
-The script prompts for the gateway machine name, certificate contact email, and a one-use join key. You can pass `--hostname`, `--email`, and `--image` after `sh -s --` to automate non-secret settings. It runs the versioned image with persistent named volumes and removes the temporary join-key file after successful Tailscale login. The gateway image contains its fixed Caddyfile; no Worker, Cloudflare, or Tailscale API credential is sent to Caddy.
+The script prompts for the gateway machine name, certificate contact email, and a one-use join key. You can pass `--hostname`, `--email`, `--image`, and `--dns` after `sh -s --` to automate non-secret settings. It runs the versioned image with persistent named volumes and removes the temporary join-key file after successful Tailscale login. The installer uses `9.9.9.9` for public DNS by default because the host's Tailscale resolver may have no upstream DNS server; use `--dns` to select another resolver. The gateway image contains its fixed Caddyfile; no Worker, Cloudflare, or Tailscale API credential is sent to Caddy.
 
 On the existing VPS, the script stops the old sidecar and reuses its `tailscale-cloudflare-gateway_tailscale_state` volume. It keeps the old container available until the new gateway joins. New servers use the same volume names for Tailscale state and Caddy data. The image must be public on GHCR for an unauthenticated first-time pull.
 
@@ -49,7 +49,7 @@ After joining, sync the Worker and check the A, CNAME, SRV, and backend A record
 To update or roll back, run the installer again with `--image` set to the desired published tag. Existing non-secret settings are loaded from the server-local settings file; `--reuse-state` skips the join-key prompt:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/tailscale-x/tailscale-cloudflare/main/gateway/install.sh | sh -s -- --image ghcr.io/tailscale-x/tailscale-cloudflare-caddy:v0.1.1 --reuse-state
+curl -fsSL https://raw.githubusercontent.com/tailscale-x/tailscale-cloudflare/main/gateway/install.sh | sh -s -- --image ghcr.io/tailscale-x/tailscale-cloudflare-caddy:v0.1.2 --reuse-state
 ```
 
 The same named volumes preserve the node identity and certificates. The image workflow validates the Caddyfile and installer on `main` and publishes `ghcr.io/tailscale-x/tailscale-cloudflare-caddy:<version-tag>` on version tags.

@@ -4,7 +4,7 @@
 import { z } from 'zod'
 
 /**
- * Shared API credentials and webhook configuration
+ * Shared DNS and tailnet settings
  * Used by TaskBasedSettings
  */
 export interface SharedCredentials {

@@ -2,26 +2,27 @@
 # Install or update the versioned, single-image gateway with Docker.
 set -eu
 
-image_default='ghcr.io/tailscale-x/tailscale-cloudflare-caddy:v0.1.1'
+image_default='ghcr.io/tailscale-x/tailscale-cloudflare-caddy:v0.1.2'
 container='tailscale-cloudflare-gateway'
 base="${XDG_DATA_HOME:-$HOME/.local/share}/tailscale-cloudflare-gateway"
 config="${XDG_CONFIG_HOME:-$HOME/.config}/tailscale-cloudflare-gateway/settings"
 image=''
 hostname=''
 email=''
+dns=''
 reuse_state=false
 skip_pull=false
 
 usage() {
-    echo 'Usage: install.sh [--image IMAGE] [--hostname NAME] [--email ADDRESS] [--reuse-state] [--skip-pull]'
+    echo 'Usage: install.sh [--image IMAGE] [--hostname NAME] [--email ADDRESS] [--dns RESOLVER_IP] [--reuse-state] [--skip-pull]'
     echo 'Run with no options for interactive setup. Use --image with a previous tag to roll back.'
 }
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
-        --image|--hostname|--email)
+        --image|--hostname|--email|--dns)
             [ "$#" -ge 2 ] || { usage >&2; exit 2; }
-            case "$1" in --image) image=$2;; --hostname) hostname=$2;; --email) email=$2;; esac
+            case "$1" in --image) image=$2;; --hostname) hostname=$2;; --email) email=$2;; --dns) dns=$2;; esac
             shift 2;;
         --reuse-state) reuse_state=true; shift;;
         --skip-pull) skip_pull=true; shift;;
@@ -37,7 +38,9 @@ saved() {
 [ -n "$image" ] || image=$(saved IMAGE)
 [ -n "$hostname" ] || hostname=$(saved TS_HOSTNAME)
 [ -n "$email" ] || email=$(saved ACME_EMAIL)
+[ -n "$dns" ] || dns=$(saved DNS_SERVER)
 [ -n "$image" ] || image=$image_default
+[ -n "$dns" ] || dns='9.9.9.9'
 
 prompt() {
     label=$1
@@ -133,6 +136,7 @@ restore() {
 
 if ! docker_cmd run -d --name "$container" --hostname "$hostname" --restart unless-stopped \
     --cap-add NET_ADMIN --cap-add NET_RAW --device /dev/net/tun:/dev/net/tun \
+    --dns "$dns" \
     -p 80:80/tcp -p 443:443/tcp \
     -v tailscale-cloudflare-gateway_tailscale_state:/var/lib/tailscale \
     -v tailscale-cloudflare-gateway_caddy_data:/data \
@@ -161,5 +165,5 @@ for old in "$legacy_caddy" "$legacy_ts"; do
     if docker_cmd container inspect "$old" >/dev/null 2>&1; then docker_cmd rm "$old" >/dev/null; fi
 done
 umask 077
-printf 'IMAGE=%s\nTS_HOSTNAME=%s\nACME_EMAIL=%s\n' "$image" "$hostname" "$email" > "$config"
+printf 'IMAGE=%s\nTS_HOSTNAME=%s\nACME_EMAIL=%s\nDNS_SERVER=%s\n' "$image" "$hostname" "$email" "$dns" > "$config"
 echo 'Gateway is running. Tailscale identity and Caddy data are in persistent Docker volumes.'

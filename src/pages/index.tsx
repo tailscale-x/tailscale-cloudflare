@@ -25,12 +25,6 @@ export default async function HomePage() {
             View Sync Status
           </Link>
         </div>
-        <div className="mt-12 space-y-2 text-sm text-gray-500 text-left bg-gray-50 p-6 rounded-lg border border-gray-100">
-          <h2 className="font-semibold text-gray-700">API Endpoints</h2>
-          <ul className="list-disc pl-5">
-            <li><code>POST /webhook</code> - Tailscale webhook receiver</li>
-          </ul>
-        </div>
       </div>
     </div>
   );

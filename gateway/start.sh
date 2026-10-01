@@ -26,6 +26,9 @@ if [ "$joined" -ne 1 ]; then
     echo 'Tailscale did not acquire an IPv4 address; check the saved state or supply a join key' >&2
     exit 1
 fi
+# A restored Tailscale state may have accepted tailnet DNS on an earlier run.
+# Keep Docker's configured resolver for public ACME and SRV lookups.
+tailscale set --accept-dns=false
 echo 'Tailscale ready; starting Caddy'
 caddy run --config /etc/caddy/Caddyfile --adapter caddyfile &
 caddy_pid=$!
