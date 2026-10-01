@@ -2,7 +2,7 @@
 # Install or update the versioned, single-image gateway with Docker.
 set -eu
 
-image_default='ghcr.io/tailscale-x/tailscale-cloudflare-caddy:v0.1.0'
+image_default='ghcr.io/tailscale-x/tailscale-cloudflare-caddy:v0.1.1'
 container='tailscale-cloudflare-gateway'
 base="${XDG_DATA_HOME:-$HOME/.local/share}/tailscale-cloudflare-gateway"
 config="${XDG_CONFIG_HOME:-$HOME/.config}/tailscale-cloudflare-gateway/settings"

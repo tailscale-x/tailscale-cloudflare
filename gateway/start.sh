@@ -13,15 +13,19 @@ for attempt in $(seq 1 30); do
 done
 if [ "$ready" -ne 1 ]; then echo 'tailscaled did not start' >&2; exit 1; fi
 
-if ! tailscale ip -4 | grep -q .; then
-    if [ ! -s /run/secrets/tailscale_auth_key ]; then
-        echo 'No active Tailscale state or one-use join key found' >&2
-        exit 1
-    fi
+if ! tailscale ip -4 2>/dev/null | grep -q . && [ -s /run/secrets/tailscale_auth_key ]; then
     tailscale up --auth-key=file:/run/secrets/tailscale_auth_key --hostname="${TS_HOSTNAME:?Set TS_HOSTNAME}" --accept-dns=false
 fi
 
-tailscale ip -4 | grep -q . || { echo 'Tailscale did not acquire an IPv4 address' >&2; exit 1; }
+joined=0
+for attempt in $(seq 1 60); do
+    if tailscale ip -4 2>/dev/null | grep -q .; then joined=1; break; fi
+    sleep 1
+done
+if [ "$joined" -ne 1 ]; then
+    echo 'Tailscale did not acquire an IPv4 address; check the saved state or supply a join key' >&2
+    exit 1
+fi
 echo 'Tailscale ready; starting Caddy'
 caddy run --config /etc/caddy/Caddyfile --adapter caddyfile &
 caddy_pid=$!

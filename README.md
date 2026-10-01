@@ -49,7 +49,7 @@ After joining, sync the Worker and check the A, CNAME, SRV, and backend A record
 To update or roll back, run the installer again with `--image` set to the desired published tag. Existing non-secret settings are loaded from the server-local settings file; `--reuse-state` skips the join-key prompt:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/tailscale-x/tailscale-cloudflare/main/gateway/install.sh | sh -s -- --image ghcr.io/tailscale-x/tailscale-cloudflare-caddy:v0.1.0 --reuse-state
+curl -fsSL https://raw.githubusercontent.com/tailscale-x/tailscale-cloudflare/main/gateway/install.sh | sh -s -- --image ghcr.io/tailscale-x/tailscale-cloudflare-caddy:v0.1.1 --reuse-state
 ```
 
 The same named volumes preserve the node identity and certificates. The image workflow validates the Caddyfile and installer on `main` and publishes `ghcr.io/tailscale-x/tailscale-cloudflare-caddy:<version-tag>` on version tags.
