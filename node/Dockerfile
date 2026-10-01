@@ -5,6 +5,7 @@ RUN go test -mod=readonly ./... && CGO_ENABLED=0 go build -mod=readonly -trimpat
 
 FROM alpine:3.22
 RUN apk add --no-cache ca-certificates
+ENV XDG_DATA_HOME=/data
 COPY --from=build /usr/bin/caddy /usr/bin/caddy
 COPY gateway/Caddyfile /etc/caddy/gateway.Caddyfile
 COPY router/Caddyfile /etc/caddy/router.Caddyfile

@@ -21,6 +21,7 @@ jobs:
         run: |
           docker run --rm --entrypoint caddy -e ACME_EMAIL=ci@example.com -e TS_HOSTNAME=ci-gateway -e TS_AUTHKEY=unused caddy-node-check adapt --config /etc/caddy/gateway.Caddyfile --adapter caddyfile >/dev/null
           docker run --rm --entrypoint caddy -e TS_HOSTNAME=ci-router -e TS_AUTHKEY=unused caddy-node-check adapt --config /etc/caddy/router.Caddyfile --adapter caddyfile >/dev/null
+          docker run --rm --entrypoint sh caddy-node-check -c 'test "$XDG_DATA_HOME" = /data'
           sh -n node/install.sh
           sh -n node/test-proxy.sh
       - name: Check Docker label routing and ingress reachability
