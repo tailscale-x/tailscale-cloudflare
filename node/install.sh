@@ -22,7 +22,7 @@ container="tailscale-cloudflare-$role"
 base="${XDG_DATA_HOME:-$HOME/.local/share}/$container"
 settings="$base/settings"
 if [ -z "$image" ]; then
-    image='ghcr.io/tailscale-x/tailscale-cloudflare-caddy:v0.2.4'
+    image='ghcr.io/tailscale-x/tailscale-cloudflare-caddy:v0.2.5'
 fi
 saved() { [ -f "$settings" ] && sed -n "s/^$1=//p" "$settings" | head -1 || true; }
 [ -n "$worker" ] || worker=$(saved WORKER_URL)
@@ -96,8 +96,7 @@ fi
 
 ready=false
 for attempt in $(seq 1 60); do
-    if docker_cmd exec "$container" wget -q -O /dev/null http://127.0.0.1:2019/config/ >/dev/null 2>&1 \
-        && docker_cmd logs "$container" 2>&1 | grep -q 'AuthLoop: state is Running'; then ready=true; break; fi
+    if docker_cmd exec "$container" wget -q -O /dev/null http://127.0.0.1:2019/config/ >/dev/null 2>&1; then ready=true; break; fi
     if [ "$(docker_cmd inspect --format '{{.State.Running}}' "$container")" != true ]; then break; fi
     sleep 2
 done
