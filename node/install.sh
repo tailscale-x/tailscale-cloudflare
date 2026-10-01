@@ -22,7 +22,7 @@ container="tailscale-cloudflare-$role"
 base="${XDG_DATA_HOME:-$HOME/.local/share}/$container"
 settings="$base/settings"
 if [ -z "$image" ]; then
-    image='ghcr.io/tailscale-x/tailscale-cloudflare-caddy:v0.2.2'
+    image='ghcr.io/tailscale-x/tailscale-cloudflare-caddy:v0.2.3'
 fi
 saved() { [ -f "$settings" ] && sed -n "s/^$1=//p" "$settings" | head -1 || true; }
 [ -n "$worker" ] || worker=$(saved WORKER_URL)
@@ -96,11 +96,12 @@ fi
 
 ready=false
 for attempt in $(seq 1 60); do
-    if docker_cmd exec "$container" wget -q -O /dev/null http://127.0.0.1:2019/config/ >/dev/null 2>&1; then ready=true; break; fi
+    if docker_cmd exec "$container" wget -q -O /dev/null http://127.0.0.1:2019/config/ >/dev/null 2>&1 \
+        && docker_cmd logs "$container" 2>&1 | grep -q 'AuthLoop: state is Running'; then ready=true; break; fi
     if [ "$(docker_cmd inspect --format '{{.State.Running}}' "$container")" != true ]; then break; fi
     sleep 2
 done
 if [ "$ready" != true ]; then docker_cmd logs --tail 40 "$container" >&2 || true; restore; echo 'Node failed to start; prior container restored' >&2; exit 1; fi
-docker_cmd rm -f "$backup" >/dev/null 2>&1 || true
 printf 'WORKER_URL=%s\nACME_EMAIL=%s\nIMAGE=%s\n' "$worker" "$email" "$image" > "$settings"
 echo "$role is running. State is persisted in $state_volume."
+if docker_cmd container inspect "$backup" >/dev/null 2>&1; then echo "Previous container retained as $backup for rollback."; fi
