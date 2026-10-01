@@ -22,7 +22,7 @@ container="tailscale-cloudflare-$role"
 base="${XDG_DATA_HOME:-$HOME/.local/share}/$container"
 settings="$base/settings"
 if [ -z "$image" ]; then
-    image='ghcr.io/tailscale-x/tailscale-cloudflare-caddy:v0.2.3'
+    image='ghcr.io/tailscale-x/tailscale-cloudflare-caddy:v0.2.4'
 fi
 saved() { [ -f "$settings" ] && sed -n "s/^$1=//p" "$settings" | head -1 || true; }
 [ -n "$worker" ] || worker=$(saved WORKER_URL)
@@ -79,7 +79,7 @@ restore() {
 }
 
 if [ "$role" = gateway ]; then
-    if ! docker_cmd run -d --name "$container" --restart unless-stopped --dns 9.9.9.9 \
+    if ! docker_cmd run -d --name "$container" --restart unless-stopped \
         -p 80:80/tcp -p 443:443/tcp \
         -v "$state_volume:/state" -v "${container}_caddy_data:/data" \
         --mount "type=bind,src=$base/enroll,dst=/run/enroll" \
