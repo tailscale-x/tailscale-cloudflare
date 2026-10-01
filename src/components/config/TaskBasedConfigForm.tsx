@@ -9,7 +9,7 @@ import { Section } from '../common/Section'
 import { CredentialsNotice } from './CredentialsNotice'
 import { CIDRListManager } from './CIDRListManager'
 import { TaskEditor } from './TaskEditor'
-import { GatewayProvisioning } from './GatewayProvisioning'
+import { NodeProvisioning } from './NodeProvisioning'
 import { deleteGenerationTaskAction } from '../../actions'
 
 interface TaskBasedConfigFormProps {
@@ -126,7 +126,7 @@ export function TaskBasedConfigForm({ initialSettings, onSave, devices = [] }: T
     return (
         <div className="max-w-5xl mx-auto p-6 space-y-6">
             <CredentialsNotice />
-            <GatewayProvisioning />
+            <NodeProvisioning />
 
             <Section title="CIDR Lists">
                 <CIDRListManager

@@ -6,7 +6,7 @@
   "scripts": {
     "cf-typegen": "wrangler types",
     "dev": "waku dev --host 0.0.0.0",
-    "build": "CLOUDFLARE=1 waku build",
+    "build": "CLOUDFLARE=1 waku build && node scripts/wrap-worker.mjs",
     "start": "wrangler dev --ip 0.0.0.0",
     "deploy": "wrangler deploy"
   },

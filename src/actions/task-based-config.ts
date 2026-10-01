@@ -111,7 +111,7 @@ export async function taskBasedManualSyncAction() {
         const result = await TaskBasedDNSService.performSync(settings, ownerId, false, {
             clientId: cfEnv.TAILSCALE_OAUTH_CLIENT_ID ?? '',
             clientSecret: cfEnv.TAILSCALE_OAUTH_CLIENT_SECRET ?? '',
-        });
+        }, cfEnv.CONFIG_KV);
 
         logger.info('Task-based manual DNS synchronization completed successfully via Server Action');
         return {
@@ -151,7 +151,7 @@ export async function taskBasedSyncStatusAction() {
         const result = await TaskBasedDNSService.performSync(settings, ownerId, true, {
             clientId: cfEnv.TAILSCALE_OAUTH_CLIENT_ID ?? '',
             clientSecret: cfEnv.TAILSCALE_OAUTH_CLIENT_SECRET ?? '',
-        });
+        }, cfEnv.CONFIG_KV);
 
         return {
             success: result.errors.length === 0,

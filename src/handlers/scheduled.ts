@@ -24,7 +24,7 @@ export async function handleScheduled(event: ScheduledEvent): Promise<void> {
 		await TaskBasedDNSService.performSync(settings, ownerId, false, {
 			clientId: cfEnv.TAILSCALE_OAUTH_CLIENT_ID ?? '',
 			clientSecret: cfEnv.TAILSCALE_OAUTH_CLIENT_SECRET ?? '',
-		});
+		}, cfEnv.CONFIG_KV);
 		logger.info('Cron job completed successfully');
 	} catch (error) {
 		logger.error('Cron job error:', error);

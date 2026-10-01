@@ -15,7 +15,9 @@ import { CloudflareClient } from './cloudflare'
 import { createLogger } from '../utils/logger'
 import { selectMachines } from '../utils/machine-selector'
 import { generateRecordsFromTask, createRecordComment, type GeneratedDNSRecord } from '../utils/dns-records'
-import { generateGatewayExposureRecords } from '../utils/gateway-exposure'
+import { generateGatewayExposureRecords, generateManagedGatewayAddress } from '../utils/gateway-exposure'
+import { generateRouterExposureRecords, type ManagedNode } from '../utils/router-exposure'
+import { loadManagedNodes } from '../utils/node-kv'
 
 const logger = createLogger()
 
@@ -49,6 +51,7 @@ export class TaskBasedDNSService {
     private cloudflareClient: CloudflareClient
     private settings: TaskBasedSettings
     private ownerId: string
+    private nodeKV: KVNamespace | undefined
 
     constructor(
         settings: TaskBasedSettings,
@@ -57,10 +60,12 @@ export class TaskBasedDNSService {
             tailscaleClient?: TailscaleClient
             cloudflareClient?: CloudflareClient
             oauth?: Pick<TailscaleClientConfig, 'clientId' | 'clientSecret'>
+            nodeKV?: KVNamespace
         }
     ) {
         this.settings = settings
         this.ownerId = ownerId
+        this.nodeKV = clients?.nodeKV
 
         this.tailscaleClient = clients?.tailscaleClient || new TailscaleClient({
             clientId: clients?.oauth?.clientId ?? '',
@@ -80,11 +85,12 @@ export class TaskBasedDNSService {
         settings: TaskBasedSettings,
         ownerId: string,
         dryRun: boolean = false,
-        oauth?: Pick<TailscaleClientConfig, 'clientId' | 'clientSecret'>
+        oauth?: Pick<TailscaleClientConfig, 'clientId' | 'clientSecret'>,
+        nodeKV?: KVNamespace
     ): Promise<TaskBasedSyncResult> {
         logger.info(`Creating task-based DNS sync service with owner ID: ${ownerId}`)
         if (!oauth?.clientId || !oauth.clientSecret) throw new Error('Tailscale OAuth Wrangler secrets are not configured')
-        const service = new TaskBasedDNSService(settings, ownerId, { oauth })
+        const service = new TaskBasedDNSService(settings, ownerId, { oauth, ...(nodeKV ? { nodeKV } : {}) })
         return service.syncAllMachines(dryRun)
     }
 
@@ -283,6 +289,10 @@ export class TaskBasedDNSService {
         let totalMatchedDevices = 0
         const errors: string[] = []
         const protectedGatewayNames = new Set<string>()
+        let managedNodes: ManagedNode[] = []
+        if (this.nodeKV) managedNodes = await loadManagedNodes(this.nodeKV, this.ownerId)
+        const activeGateway = managedNodes.filter(node => node.role === 'gateway' && !node.revoked && node.lastReportAt > 0)
+            .sort((a, b) => (b.enrolledAt ?? 0) - (a.enrolledAt ?? 0))[0]
 
         for (const task of this.settings.generationTasks) {
             if (!task.enabled) {
@@ -290,9 +300,17 @@ export class TaskBasedDNSService {
                 continue
             }
 
+            if (task.gatewayExposure && managedNodes.some(node => node.role === 'gateway') && !activeGateway) {
+                logger.info(`Skipping gateway exposure task without an active gateway: ${task.name}`)
+                continue
+            }
+
             logger.info(`Processing task: ${task.name}`)
-            const { records: generatedRecords, errors: taskErrors, preserveGatewayA } = task.gatewayExposure
-                ? generateGatewayExposureRecords(task, devices, this.settings.namedCIDRLists, this.ownerId)
+            const effectiveTask = task.gatewayExposure && activeGateway?.gatewayHostname
+                ? { ...task, gatewayExposure: { ...task.gatewayExposure, gatewayMachineName: activeGateway.machineName, gatewayHostname: activeGateway.gatewayHostname } }
+                : task
+            const { records: generatedRecords, errors: taskErrors, preserveGatewayA } = effectiveTask.gatewayExposure
+                ? generateGatewayExposureRecords(effectiveTask, devices, this.settings.namedCIDRLists, this.ownerId)
                 : {
                     ...generateRecordsFromTask(task, devices, this.settings.namedCIDRLists, { ownerId: this.ownerId }),
                     errors: [] as string[],
@@ -313,6 +331,24 @@ export class TaskBasedDNSService {
             // Count matched devices
             const matched = selectMachines(devices, task.machineSelector).length
             totalMatchedDevices = Math.max(totalMatchedDevices, matched)
+        }
+
+        if (activeGateway?.gatewayHostname) {
+            const address = generateManagedGatewayAddress(activeGateway.machineName, activeGateway.gatewayHostname, devices, this.ownerId)
+            errors.push(...address.errors)
+            if (address.preserveGatewayA) protectedGatewayNames.add(address.preserveGatewayA.toLowerCase())
+            for (const generated of address.records) {
+                const record = this.convertToCloudflareParam(generated)
+                expectedRecordsMap.set(this.getRecordKey(record), record)
+            }
+        }
+        if (this.nodeKV) {
+            const router = generateRouterExposureRecords(managedNodes, devices, this.ownerId)
+            errors.push(...router.errors)
+            for (const generated of router.records) {
+                const record = this.convertToCloudflareParam(generated)
+                expectedRecordsMap.set(this.getRecordKey(record), record)
+            }
         }
 
         // Get existing managed records

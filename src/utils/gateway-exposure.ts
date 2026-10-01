@@ -23,6 +23,19 @@ export interface GatewayExposureResult {
     preserveGatewayA?: string
 }
 
+export function generateManagedGatewayAddress(machineName: string, gatewayHostname: string, devices: TailscaleDevice[], ownerId: string): GatewayExposureResult {
+    const gateways = devices.filter(device => getMachineName(device)?.toLowerCase() === machineName.toLowerCase())
+    const publicIPs = gateways.length === 1
+        ? [...new Set(extractIPsFromEndpoints(gateways[0]!.clientConnectivity?.endpoints || []).filter(isPublicIPv4))]
+        : []
+    if (gateways.length !== 1 || publicIPs.length !== 1) return {
+        records: [], errors: [`Gateway ${machineName} must match one machine with one distinct public IPv4 endpoint; found ${gateways.length} machines and ${publicIPs.length} addresses`],
+        preserveGatewayA: gatewayHostname,
+    }
+    return { records: [{ type: 'A', name: gatewayHostname, content: publicIPs[0]!, ttl: 300,
+        proxied: false, comment: createRecordComment(machineName, ownerId) }], errors: [] }
+}
+
 /** Generate the gateway address and service records from one gateway exposure task. */
 export function generateGatewayExposureRecords(
     task: GenerationTask,
@@ -35,25 +48,9 @@ export function generateGatewayExposureRecords(
 
     const errors: string[] = []
     const records: GeneratedDNSRecord[] = []
-    const gatewayName = exposure.gatewayMachineName.toLowerCase()
-    const gateways = devices.filter(device => getMachineName(device)?.toLowerCase() === gatewayName)
-    const publicIPs = gateways.length === 1
-        ? [...new Set(extractIPsFromEndpoints(gateways[0]!.clientConnectivity?.endpoints || []).filter(isPublicIPv4))]
-        : []
-
-    const gatewayInvalid = gateways.length !== 1 || publicIPs.length !== 1
-    if (gatewayInvalid) {
-        errors.push(`Gateway ${exposure.gatewayMachineName} must match one machine with one distinct public IPv4 endpoint; found ${gateways.length} machines and ${publicIPs.length} addresses`)
-    } else {
-        records.push({
-            type: 'A',
-            name: exposure.gatewayHostname,
-            content: publicIPs[0]!,
-            ttl: 300,
-            proxied: false,
-            comment: createRecordComment(exposure.gatewayMachineName, ownerId),
-        })
-    }
+    const address = generateManagedGatewayAddress(exposure.gatewayMachineName, exposure.gatewayHostname, devices, ownerId)
+    errors.push(...address.errors)
+    records.push(...address.records)
 
     const selectedBackends = selectMachines(devices, task.machineSelector).map(({ device }) => device)
     const serviceDevices: TailscaleDevice[] = []
@@ -98,6 +95,6 @@ export function generateGatewayExposureRecords(
     return {
         records,
         errors,
-        ...(gatewayInvalid ? { preserveGatewayA: exposure.gatewayHostname } : {}),
+        ...(address.preserveGatewayA ? { preserveGatewayA: exposure.gatewayHostname } : {}),
     }
 }
