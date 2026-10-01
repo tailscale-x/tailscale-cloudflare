@@ -104,10 +104,14 @@ done
 
 previous=''
 if docker_cmd container inspect "$container" >/dev/null 2>&1; then
-    previous="${container}-backup"
-    docker_cmd rm -f "$previous" >/dev/null 2>&1 || true
-    docker_cmd stop "$container" >/dev/null
-    docker_cmd rename "$container" "$previous"
+    if [ "$(docker_cmd inspect --format '{{.State.Running}}' "$container")" = true ]; then
+        previous="${container}-backup"
+        docker_cmd rm -f "$previous" >/dev/null 2>&1 || true
+        docker_cmd stop "$container" >/dev/null
+        docker_cmd rename "$container" "$previous"
+    else
+        docker_cmd rm "$container" >/dev/null
+    fi
 fi
 legacy_ts='tailscale-cloudflare-gateway-tailscale-1'
 legacy_caddy='tailscale-cloudflare-gateway-caddy-1'
@@ -153,6 +157,9 @@ fi
 
 rm -f "$join_file"
 if [ -n "$previous" ]; then docker_cmd rm -f "$previous" >/dev/null; fi
+for old in "$legacy_caddy" "$legacy_ts"; do
+    if docker_cmd container inspect "$old" >/dev/null 2>&1; then docker_cmd rm "$old" >/dev/null; fi
+done
 umask 077
 printf 'IMAGE=%s\nTS_HOSTNAME=%s\nACME_EMAIL=%s\n' "$image" "$hostname" "$email" > "$config"
 echo 'Gateway is running. Tailscale identity and Caddy data are in persistent Docker volumes.'
