@@ -273,8 +273,6 @@ func (dockerLoader *DockerLoader) update() bool {
 			return false
 		}
 
-		log.Info("New Config JSON", zap.ByteString("json", configJSON))
-
 		dockerLoader.lastJSONConfig = configJSON
 		dockerLoader.lastVersion++
 	}
