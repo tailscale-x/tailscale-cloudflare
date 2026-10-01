@@ -9,10 +9,11 @@ export function CredentialsNotice() {
         <Alert className="mb-6">
             <Info className="h-4 w-4" />
             <AlertDescription>
-                <strong>API Credentials:</strong> Manage your Tailscale and Cloudflare API credentials on the{' '}
+                <strong>Credentials:</strong> Set the tailnet and Cloudflare token on the{' '}
                 <Link to="/credentials" className="font-medium underline underline-offset-4 hover:text-primary">
                     Credentials Page
                 </Link>
+                . Set the Tailscale OAuth client ID and secret as Wrangler secrets.
             </AlertDescription>
         </Alert>
     )

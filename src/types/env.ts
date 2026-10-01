@@ -10,6 +10,8 @@ export interface Env {
 
 	// Bootstrap configuration
 	DNS_RECORD_OWNER_ID: string
+	TAILSCALE_OAUTH_CLIENT_ID?: string
+	TAILSCALE_OAUTH_CLIENT_SECRET?: string
 
 	// Keep LOG_LEVEL in Env for startup logging before settings are loaded
 	LOG_LEVEL?: string
@@ -18,6 +20,8 @@ export interface Env {
 export const envSchema = z.object({
 	CONFIG_KV: z.custom<KVNamespace>((val) => val !== undefined && val !== null, "CONFIG_KV is required"),
 	DNS_RECORD_OWNER_ID: z.string(),
+	TAILSCALE_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+	TAILSCALE_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
 	LOG_LEVEL: z.preprocess(
 		(val) => (typeof val === 'string' && val.trim() === '' ? undefined : val),
 		z

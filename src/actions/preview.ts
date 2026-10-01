@@ -22,10 +22,9 @@ export async function getTailscaleDevicesAction() {
 
         // Load settings to get Tailscale credentials
         const rawSettings = await getSettings(cfEnv.CONFIG_KV, ownerId) as any;
-        const apiKey = rawSettings.TAILSCALE_API_KEY;
         const tailnet = rawSettings.TAILSCALE_TAILNET;
 
-        if (!apiKey || !tailnet) {
+        if (!cfEnv.TAILSCALE_OAUTH_CLIENT_ID || !cfEnv.TAILSCALE_OAUTH_CLIENT_SECRET || !tailnet) {
             return {
                 success: false,
                 devices: [],
@@ -36,7 +35,8 @@ export async function getTailscaleDevicesAction() {
         // Fetch Tailscale devices
         const { TailscaleClient } = await import('../services/tailscale-client');
         const tsClient = new TailscaleClient({
-            apiKey,
+            clientId: cfEnv.TAILSCALE_OAUTH_CLIENT_ID,
+            clientSecret: cfEnv.TAILSCALE_OAUTH_CLIENT_SECRET,
             tailnet,
         });
         const devices = await tsClient.getDevices();

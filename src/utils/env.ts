@@ -13,6 +13,8 @@ const envSchema = z.object({
 		return typeof val === 'object' && val !== null && 'get' in val && 'put' in val
 	}, "CONFIG_KV binding is missing"),
 	DNS_RECORD_OWNER_ID: z.string().optional(),
+	TAILSCALE_OAUTH_CLIENT_ID: z.string().min(1).optional(),
+	TAILSCALE_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),
 	LOG_LEVEL: z.string().optional()
 })
 

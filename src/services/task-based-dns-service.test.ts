@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { TaskBasedDNSService } from './task-based-dns-service'
+import { generateRecordsFromTask } from '../utils/dns-records'
 import type { TaskBasedSettings } from '../types/task-based-settings'
 import type { TailscaleDevice } from '../types/tailscale'
 import type { RecordResponse } from 'cloudflare/resources/dns/records'
@@ -21,7 +22,6 @@ describe('TaskBasedDNSService', () => {
         }
 
         settings = {
-            TAILSCALE_API_KEY: 'tskey-api-test',
             CLOUDFLARE_API_TOKEN: 'cloudflare-token-test-12345678901234567890',
             TAILSCALE_TAILNET: 'test.tailnet',
             namedCIDRLists: [],
@@ -155,11 +155,6 @@ describe('TaskBasedDNSService', () => {
 
     describe('associatedSrv', () => {
         it('should generate an associated SRV record when enabled', () => {
-            const service = new TaskBasedDNSService(settings, 'owner1', {
-                cloudflareClient: mockCloudflareClient,
-                tailscaleClient: mockTailscaleClient
-            })
-
             const task: any = {
                 id: 'task-srv',
                 name: 'Test Task SRV',
@@ -186,23 +181,23 @@ describe('TaskBasedDNSService', () => {
                 tags: []
             }
 
-            const { records } = (service as any).generateRecordsFromTask(task, [device])
+            const { records } = generateRecordsFromTask(task, [device])
 
             expect(records.length).toBe(2)
 
             // Check A record
             const aRecord = records.find((r: any) => r.type === 'A')
             expect(aRecord).toBeDefined()
-            expect(aRecord.name).toBe('web-server')
+            expect(aRecord!.name).toBe('web-server')
 
             // Check SRV record
             const srvRecord = records.find((r: any) => r.type === 'SRV')
             expect(srvRecord).toBeDefined()
-            expect(srvRecord.name).toBe('_web._tcp.web-server')
-            expect(srvRecord.data.port).toBe(8080)
-            expect(srvRecord.data.priority).toBe(5)
-            expect(srvRecord.data.weight).toBe(5)
-            expect(srvRecord.data.target).toBe('web-server')
+            expect(srvRecord!.name).toBe('_web._tcp.web-server')
+            expect(srvRecord!.port).toBe(8080)
+            expect(srvRecord!.priority).toBe(5)
+            expect(srvRecord!.weight).toBe(5)
+            expect(srvRecord!.content).toBe('web-server')
         })
     })
 })

@@ -9,9 +9,7 @@ const logger = createLogger()
  * Keys that should never be returned to the browser in plaintext
  */
 export const SENSITIVE_KEYS: (keyof TaskBasedSettings)[] = [
-	'TAILSCALE_API_KEY',
 	'CLOUDFLARE_API_TOKEN',
-	'webhookSecret'
 ]
 
 /**
@@ -63,7 +61,11 @@ export async function getSettings(kv: KVNamespace, ownerId: string): Promise<Par
 export async function storeSettings(kv: KVNamespace, ownerId: string, settings: Partial<TaskBasedSettings>): Promise<void> {
 	try {
 		const key = getSettingsKey(ownerId)
-		const data = JSON.stringify(settings)
+		const clean = { ...settings } as Record<string, unknown>
+		delete clean.TAILSCALE_API_KEY
+		delete clean.webhookSecret
+		delete clean.webhookUrl
+		const data = JSON.stringify(clean)
 		await kv.put(key, data)
 		logger.info(`Stored settings in KV for owner: ${ownerId}`)
 	} catch (error) {
@@ -162,4 +164,3 @@ export function maskTaskBasedSettings(settings: Partial<TaskBasedSettings>): Par
 
 	return masked
 }
-

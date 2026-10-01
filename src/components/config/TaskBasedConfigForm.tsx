@@ -9,6 +9,7 @@ import { Section } from '../common/Section'
 import { CredentialsNotice } from './CredentialsNotice'
 import { CIDRListManager } from './CIDRListManager'
 import { TaskEditor } from './TaskEditor'
+import { GatewayProvisioning } from './GatewayProvisioning'
 import { deleteGenerationTaskAction } from '../../actions'
 
 interface TaskBasedConfigFormProps {
@@ -65,6 +66,29 @@ export function TaskBasedConfigForm({ initialSettings, onSave, devices = [] }: T
         setNewTaskId(id)
     }
 
+    const addGatewayExposure = () => {
+        const id = `gateway-${Date.now()}`
+        const task: GenerationTask = {
+            id,
+            name: 'Gateway exposure',
+            enabled: true,
+            machineSelector: { field: 'tag', pattern: '' },
+            recordTemplates: [],
+            gatewayExposure: {
+                gatewayMachineName: '',
+                gatewayHostname: '',
+                publicHostnameTemplate: '{{machineName}}.example.com',
+                backendHostnameTemplate: '{{machineName}}.ts.example.com',
+                backendPort: 80,
+            },
+        }
+        setFormData(previous => ({
+            ...previous,
+            generationTasks: [...(previous.generationTasks || []), task],
+        }))
+        setNewTaskId(id)
+    }
+
 
     const deleteTask = async (index: number) => {
         const tasks = formData.generationTasks || []
@@ -102,6 +126,7 @@ export function TaskBasedConfigForm({ initialSettings, onSave, devices = [] }: T
     return (
         <div className="max-w-5xl mx-auto p-6 space-y-6">
             <CredentialsNotice />
+            <GatewayProvisioning />
 
             <Section title="CIDR Lists">
                 <CIDRListManager
@@ -115,9 +140,10 @@ export function TaskBasedConfigForm({ initialSettings, onSave, devices = [] }: T
                 title="Generation Tasks"
                 description="Define how DNS records are generated based on machine selectors and templates."
                 headerAction={
-                    <Button type="button" onClick={addNewTask} size="sm">
-                        + Add Generation Task
-                    </Button>
+                    <div className="flex gap-2">
+                        <Button type="button" onClick={addGatewayExposure} size="sm">+ Gateway Exposure</Button>
+                        <Button type="button" onClick={addNewTask} size="sm" variant="outline">+ Add Generation Task</Button>
+                    </div>
                 }
             >
                 {(formData.generationTasks || []).length === 0 ? (

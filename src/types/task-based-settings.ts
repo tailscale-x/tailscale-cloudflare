@@ -56,6 +56,13 @@ export interface GenerationTask {
     enabled: boolean
     machineSelector: MachineSelector
     recordTemplates: RecordTemplate[]
+    gatewayExposure?: {
+        gatewayMachineName: string
+        gatewayHostname: string
+        publicHostnameTemplate: string
+        backendHostnameTemplate: string
+        backendPort: number
+    }
 }
 
 /**
@@ -63,7 +70,6 @@ export interface GenerationTask {
  */
 export interface TaskBasedSettings {
     // Core API credentials
-    TAILSCALE_API_KEY: string
     CLOUDFLARE_API_TOKEN: string
     TAILSCALE_TAILNET: string
 
@@ -71,9 +77,6 @@ export interface TaskBasedSettings {
     namedCIDRLists: NamedCIDRList[]
     generationTasks: GenerationTask[]
 
-    // Optional webhook configuration
-    webhookUrl?: string
-    webhookSecret?: string
 }
 
 // ============================================================================
@@ -178,18 +181,21 @@ export const generationTaskSchema = z.object({
     description: z.string().optional(),
     enabled: z.boolean(),
     machineSelector: machineSelectorSchema,
-    recordTemplates: z.array(recordTemplateSchema).min(1, 'At least one record template is required'),
+    recordTemplates: z.array(recordTemplateSchema),
+    gatewayExposure: z.object({
+        gatewayMachineName: z.string().min(1),
+        gatewayHostname: z.string().min(1),
+        publicHostnameTemplate: z.string().min(1),
+        backendHostnameTemplate: z.string().min(1),
+        backendPort: z.number().int().min(1).max(65535),
+    }).optional(),
+}).refine(task => task.gatewayExposure || task.recordTemplates.length > 0, {
+    message: 'At least one record template is required',
+    path: ['recordTemplates'],
 })
 
 export const taskBasedSettingsSchema = z.object({
     // Core API credentials
-    TAILSCALE_API_KEY: z
-        .string()
-        .min(1, 'TAILSCALE_API_KEY is required')
-        .regex(
-            /^tskey-api-[a-zA-Z0-9_-]+$/,
-            'TAILSCALE_API_KEY must start with "tskey-api-" followed by alphanumeric characters, hyphens, or underscores'
-        ),
     CLOUDFLARE_API_TOKEN: z
         .string()
         .min(1, 'CLOUDFLARE_API_TOKEN is required')
@@ -226,9 +232,6 @@ export const taskBasedSettingsSchema = z.object({
             }
         ),
 
-    // Optional webhook configuration
-    webhookUrl: z.string().optional(),
-    webhookSecret: z.string().optional(),
 })
 
 export type TaskBasedSettingsInput = z.infer<typeof taskBasedSettingsSchema>

@@ -14,7 +14,6 @@ interface CredentialsFormProps {
 
 export function CredentialsForm({ initialCredentials = {}, onSave }: CredentialsFormProps) {
     const [credentials, setCredentials] = useState<SharedCredentials>({
-        TAILSCALE_API_KEY: initialCredentials.TAILSCALE_API_KEY || '',
         TAILSCALE_TAILNET: initialCredentials.TAILSCALE_TAILNET || '',
         CLOUDFLARE_API_TOKEN: initialCredentials.CLOUDFLARE_API_TOKEN || '',
     })
@@ -47,31 +46,8 @@ export function CredentialsForm({ initialCredentials = {}, onSave }: Credentials
 
     return (
         <form onSubmit={handleSubmit} className="max-w-3xl space-y-6">
-            <Section title="Tailscale API Credentials" description="Required to fetch device information from your Tailscale network.">
+            <Section title="Tailscale settings" description="OAuth client ID and secret are configured as Wrangler secrets.">
                 <div className="space-y-4">
-                    <FormField
-                        label="API Key"
-                        name="tailscale-api-key"
-                        type="password"
-                        value={credentials.TAILSCALE_API_KEY}
-                        onChange={(e) => setCredentials({ ...credentials, TAILSCALE_API_KEY: e.target.value })}
-                        placeholder="tskey-api-..."
-                        required
-                        helpText={
-                            <>
-                                Get your API key from{' '}
-                                <a
-                                    href="https://login.tailscale.com/admin/settings/keys"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-primary hover:underline"
-                                >
-                                    Tailscale Admin Console
-                                </a>
-                            </>
-                        }
-                    />
-
                     <FormField
                         label="Tailnet"
                         name="tailscale-tailnet"

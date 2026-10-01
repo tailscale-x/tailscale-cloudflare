@@ -9,6 +9,7 @@ import { TaskHeader } from './TaskHeader'
 import { TaskForm } from './TaskForm'
 import { RecordTemplateEditor } from './RecordTemplateEditor'
 import { RecordPreview } from './RecordPreview'
+import { GatewayExposureForm } from './GatewayExposureForm'
 import { toast } from 'sonner'
 import { saveGenerationTaskAction } from '../../actions'
 import { cn } from '@/lib/utils'
@@ -94,9 +95,14 @@ export function TaskEditor({ task: initialTask, onSave, onDelete, cidrLists, isN
 						devices={devices}
 					/>
 
-					<Separator />
+                    {!task.gatewayExposure && <Separator />}
 
-					<div className="space-y-4">
+					{task.gatewayExposure ? <div className="space-y-4">
+						<GatewayExposureForm task={task} onChange={setTask} />
+						<div className="flex justify-end pt-4 border-t">
+							<Button onClick={handleSave} disabled={isSaving}>{isSaving ? 'Saving...' : (isNew ? 'Create Task' : 'Save Task')}</Button>
+						</div>
+					</div> : <div className="space-y-4">
 						<div className="flex items-center justify-between">
 							<h5 className="font-semibold">DNS Record Templates</h5>
 							<Button type="button" onClick={addRecordTemplate} size="sm">
@@ -134,7 +140,7 @@ export function TaskEditor({ task: initialTask, onSave, onDelete, cidrLists, isN
 								{isSaving ? 'Saving...' : (isNew ? 'Create Task' : 'Save Task')}
 							</Button>
 						</div>
-					</div>
+					</div>}
 				</div>
 			)}
 		</Card>

@@ -8,8 +8,7 @@ import { z } from 'zod'
  * Used by TaskBasedSettings
  */
 export interface SharedCredentials {
-    // Tailscale API credentials
-    TAILSCALE_API_KEY: string
+    // The Tailscale OAuth client is stored in Wrangler secrets, not KV.
     TAILSCALE_TAILNET: string
 
     // Cloudflare API credentials
@@ -20,7 +19,6 @@ export interface SharedCredentials {
  * Zod schema for validating shared credentials
  */
 export const SharedCredentialsSchema = z.object({
-    TAILSCALE_API_KEY: z.string().min(1, 'Tailscale API key is required'),
     TAILSCALE_TAILNET: z.string().min(1, 'Tailscale tailnet is required'),
     CLOUDFLARE_API_TOKEN: z.string().min(1, 'Cloudflare API token is required'),
 })
@@ -29,7 +27,6 @@ export const SharedCredentialsSchema = z.object({
  * Sensitive fields that should be masked when sending to client
  */
 export const SHARED_CREDENTIALS_SENSITIVE_KEYS: (keyof SharedCredentials)[] = [
-    'TAILSCALE_API_KEY',
     'CLOUDFLARE_API_TOKEN',
 ]
 
@@ -38,7 +35,6 @@ export const SHARED_CREDENTIALS_SENSITIVE_KEYS: (keyof SharedCredentials)[] = [
  */
 export function extractSharedCredentials(settings: any): SharedCredentials {
     return {
-        TAILSCALE_API_KEY: settings.TAILSCALE_API_KEY || '',
         TAILSCALE_TAILNET: settings.TAILSCALE_TAILNET || '',
         CLOUDFLARE_API_TOKEN: settings.CLOUDFLARE_API_TOKEN || '',
     }
@@ -50,9 +46,7 @@ export function extractSharedCredentials(settings: any): SharedCredentials {
 export function mergeCredentialsIntoTaskBased(taskSettings: any, credentials: SharedCredentials): any {
     return {
         ...taskSettings,
-        TAILSCALE_API_KEY: credentials.TAILSCALE_API_KEY,
         TAILSCALE_TAILNET: credentials.TAILSCALE_TAILNET,
         CLOUDFLARE_API_TOKEN: credentials.CLOUDFLARE_API_TOKEN,
     }
 }
-

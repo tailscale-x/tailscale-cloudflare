@@ -33,7 +33,7 @@ export function TaskHeader({ task, isExpanded, onToggleExpand, onDelete }: TaskH
 
             <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
                 <Badge variant="secondary" className="text-xs">
-                    {task.recordTemplates.length} template(s)
+                    {task.gatewayExposure ? 'Gateway exposure' : `${task.recordTemplates.length} template(s)`}
                 </Badge>
                 <Button type="button" onClick={onDelete} variant="ghost" size="sm" className="text-destructive hover:text-destructive">
                     Delete Task

@@ -60,10 +60,6 @@ export async function saveSharedCredentialsAction(formData: Partial<SharedCreden
 
         // Merge formData with existing to preserve masked values
         const mergedCredentials: SharedCredentials = {
-            TAILSCALE_API_KEY:
-                formData.TAILSCALE_API_KEY === '********'
-                    ? existingSettings.TAILSCALE_API_KEY || ''
-                    : formData.TAILSCALE_API_KEY || '',
             TAILSCALE_TAILNET: formData.TAILSCALE_TAILNET || '',
             CLOUDFLARE_API_TOKEN:
                 formData.CLOUDFLARE_API_TOKEN === '********'

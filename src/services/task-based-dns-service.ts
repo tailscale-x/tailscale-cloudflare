@@ -10,11 +10,12 @@ import type {
     SRVRecordParam,
 } from 'cloudflare/resources/dns/records'
 import type { TaskBasedSettings, GenerationTask, RecordTemplate } from '../types/task-based-settings'
-import { TailscaleClient } from './tailscale-client'
+import { TailscaleClient, type TailscaleClientConfig } from './tailscale-client'
 import { CloudflareClient } from './cloudflare'
 import { createLogger } from '../utils/logger'
 import { selectMachines } from '../utils/machine-selector'
 import { generateRecordsFromTask, createRecordComment, type GeneratedDNSRecord } from '../utils/dns-records'
+import { generateGatewayExposureRecords } from '../utils/gateway-exposure'
 
 const logger = createLogger()
 
@@ -36,6 +37,7 @@ export interface TaskBasedSyncResult {
         matchedDevices: number
     }
     managed: RecordResponse[]
+    errors: string[]
 }
 
 export class TaskBasedDNSService {
@@ -54,13 +56,15 @@ export class TaskBasedDNSService {
         clients?: {
             tailscaleClient?: TailscaleClient
             cloudflareClient?: CloudflareClient
+            oauth?: Pick<TailscaleClientConfig, 'clientId' | 'clientSecret'>
         }
     ) {
         this.settings = settings
         this.ownerId = ownerId
 
         this.tailscaleClient = clients?.tailscaleClient || new TailscaleClient({
-            apiKey: settings.TAILSCALE_API_KEY,
+            clientId: clients?.oauth?.clientId ?? '',
+            clientSecret: clients?.oauth?.clientSecret ?? '',
             tailnet: settings.TAILSCALE_TAILNET,
         })
 
@@ -75,10 +79,12 @@ export class TaskBasedDNSService {
     static async performSync(
         settings: TaskBasedSettings,
         ownerId: string,
-        dryRun: boolean = false
+        dryRun: boolean = false,
+        oauth?: Pick<TailscaleClientConfig, 'clientId' | 'clientSecret'>
     ): Promise<TaskBasedSyncResult> {
         logger.info(`Creating task-based DNS sync service with owner ID: ${ownerId}`)
-        const service = new TaskBasedDNSService(settings, ownerId)
+        if (!oauth?.clientId || !oauth.clientSecret) throw new Error('Tailscale OAuth Wrangler secrets are not configured')
+        const service = new TaskBasedDNSService(settings, ownerId, { oauth })
         return service.syncAllMachines(dryRun)
     }
 
@@ -88,7 +94,7 @@ export class TaskBasedDNSService {
      */
     private isOwnedRecord(comment: string | undefined): boolean {
         if (!comment) return false
-        return comment.startsWith(TaskBasedDNSService.HERITAGE)
+        return comment.startsWith(`${TaskBasedDNSService.HERITAGE}:${this.ownerId}:`)
     }
 
     /**
@@ -126,19 +132,19 @@ export class TaskBasedDNSService {
      */
     private getRecordKey(record: DNSRecord | RecordResponse): string {
         const type = record.type
-        const name = record.name
+        const name = record.name.toLowerCase().replace(/\.$/, '')
 
         // SRV records have data instead of content
         if (type === 'SRV') {
             const data = 'data' in record ? (record.data as any) : (record as any).data
             if (data) {
-                return `${type}:${name}:${data.service}:${data.proto}:${data.priority}:${data.weight}:${data.port}:${data.target}`
+                return `${type}:${name}:${data.priority}:${data.weight}:${data.port}:${String(data.target).toLowerCase().replace(/\.$/, '')}`
             }
         }
 
         const content = 'content' in record ? (record.content as string) : (record as any).content
         if (content) {
-            return `${type}:${name}:${content}`
+            return `${type}:${name}:${type === 'CNAME' ? content.toLowerCase().replace(/\.$/, '') : content}`
         }
 
         return `${type}:${name}`
@@ -177,13 +183,17 @@ export class TaskBasedDNSService {
         expectedRecords: DNSRecord[],
         expectedKeys: Set<string>,
         existingRecords: Map<string, RecordResponse>,
-        cloudflareDuplicates: RecordResponse[]
+        cloudflareDuplicates: RecordResponse[],
+        protectedGatewayNames: Set<string> = new Set()
     ): {
         toCreate: DNSRecord[]
         toDelete: RecordResponse[]
     } {
         const toCreate: DNSRecord[] = []
-        const toDelete: RecordResponse[] = [...cloudflareDuplicates] // All duplicates in Cloudflare should be deleted
+        const shouldPreserve = (record: RecordResponse) =>
+            record.type === 'A' && protectedGatewayNames.has(record.name.toLowerCase())
+        const toDelete: RecordResponse[] = cloudflareDuplicates.filter(record =>
+            this.isOwnedRecord(record.comment ?? undefined) && !shouldPreserve(record))
 
         // Check each expected record
         for (const expectedRecord of expectedRecords) {
@@ -210,7 +220,7 @@ export class TaskBasedDNSService {
         // Find stale records
         for (const [key, existingRecord] of existingRecords.entries()) {
             if (!expectedKeys.has(key) && existingRecord.id) {
-                if (this.isOwnedRecord(existingRecord.comment)) {
+                if (this.isOwnedRecord(existingRecord.comment ?? undefined) && !shouldPreserve(existingRecord)) {
                     toDelete.push(existingRecord)
                 }
             }
@@ -271,6 +281,8 @@ export class TaskBasedDNSService {
         // Build expected records from all enabled tasks
         const expectedRecordsMap = new Map<string, DNSRecord>()
         let totalMatchedDevices = 0
+        const errors: string[] = []
+        const protectedGatewayNames = new Set<string>()
 
         for (const task of this.settings.generationTasks) {
             if (!task.enabled) {
@@ -279,12 +291,15 @@ export class TaskBasedDNSService {
             }
 
             logger.info(`Processing task: ${task.name}`)
-            const { records: generatedRecords } = generateRecordsFromTask(
-                task,
-                devices,
-                this.settings.namedCIDRLists,
-                { ownerId: this.ownerId }
-            )
+            const { records: generatedRecords, errors: taskErrors, preserveGatewayA } = task.gatewayExposure
+                ? generateGatewayExposureRecords(task, devices, this.settings.namedCIDRLists, this.ownerId)
+                : {
+                    ...generateRecordsFromTask(task, devices, this.settings.namedCIDRLists, { ownerId: this.ownerId }),
+                    errors: [] as string[],
+                    preserveGatewayA: undefined,
+                }
+            errors.push(...taskErrors)
+            if (preserveGatewayA) protectedGatewayNames.add(preserveGatewayA.toLowerCase())
 
             // Convert to Cloudflare param format
             const records: DNSRecord[] = generatedRecords.map(r => this.convertToCloudflareParam(r))
@@ -301,7 +316,8 @@ export class TaskBasedDNSService {
         }
 
         // Get existing managed records
-        const existingManagedRecords = await this.getAllManagedRecords()
+        const existingManagedRecords = (await this.getAllManagedRecords()).filter(record =>
+            this.isOwnedRecord(record.comment ?? undefined))
         const { recordMap: existingRecordsMap, duplicates: cloudflareDuplicates } = this.recordsToMap(existingManagedRecords)
 
         // Convert expected records map to arrays
@@ -309,7 +325,7 @@ export class TaskBasedDNSService {
         const expectedKeys = new Set(expectedRecordsMap.keys())
 
         // Perform diff
-        const { toCreate, toDelete } = this.performDiff(expectedRecords, expectedKeys, existingRecordsMap, cloudflareDuplicates)
+        const { toCreate, toDelete } = this.performDiff(expectedRecords, expectedKeys, existingRecordsMap, cloudflareDuplicates, protectedGatewayNames)
 
         // Execute operations
         if (toDelete.length > 0 || toCreate.length > 0) {
@@ -323,6 +339,8 @@ export class TaskBasedDNSService {
         } else {
             logger.info('No DNS changes required - all records are up to date')
         }
+
+        for (const error of errors) logger.error(error)
 
         return {
             added: toCreate,
@@ -339,6 +357,7 @@ export class TaskBasedDNSService {
                 matchedDevices: totalMatchedDevices,
             },
             managed: existingManagedRecords,
+            errors,
         }
     }
 }

@@ -73,13 +73,10 @@ export async function getTaskBasedConfigAction() {
 
         // If empty, return default structure
         const settings: Partial<TaskBasedSettings> = {
-            TAILSCALE_API_KEY: rawSettings.TAILSCALE_API_KEY || '',
             CLOUDFLARE_API_TOKEN: rawSettings.CLOUDFLARE_API_TOKEN || '',
             TAILSCALE_TAILNET: rawSettings.TAILSCALE_TAILNET || '',
             namedCIDRLists: rawSettings.namedCIDRLists || [],
             generationTasks: rawSettings.generationTasks || [],
-            webhookUrl: rawSettings.webhookUrl || '',
-            webhookSecret: rawSettings.webhookSecret || '',
         };
 
         // Mask sensitive fields
@@ -111,17 +108,22 @@ export async function taskBasedManualSyncAction() {
         const settings = validateTaskBasedSettings(rawSettings);
 
         // Perform full DNS sync
-        const result = await TaskBasedDNSService.performSync(settings, ownerId);
+        const result = await TaskBasedDNSService.performSync(settings, ownerId, false, {
+            clientId: cfEnv.TAILSCALE_OAUTH_CLIENT_ID ?? '',
+            clientSecret: cfEnv.TAILSCALE_OAUTH_CLIENT_SECRET ?? '',
+        });
 
         logger.info('Task-based manual DNS synchronization completed successfully via Server Action');
         return {
-            success: true,
-            message: 'Full DNS synchronization completed successfully',
+            success: result.errors.length === 0,
+            message: result.errors.length === 0 ? 'Full DNS synchronization completed successfully' : undefined,
+            error: result.errors.length ? result.errors.join('\n') : undefined,
             sync: {
                 added: result.added,
                 deleted: result.deleted,
                 summary: result.summary,
                 managed: result.managed,
+                errors: result.errors,
             },
         };
     } catch (error) {
@@ -146,11 +148,15 @@ export async function taskBasedSyncStatusAction() {
         const settings = validateTaskBasedSettings(rawSettings);
 
         // Perform dry-run sync to get status
-        const result = await TaskBasedDNSService.performSync(settings, ownerId, true);
+        const result = await TaskBasedDNSService.performSync(settings, ownerId, true, {
+            clientId: cfEnv.TAILSCALE_OAUTH_CLIENT_ID ?? '',
+            clientSecret: cfEnv.TAILSCALE_OAUTH_CLIENT_SECRET ?? '',
+        });
 
         return {
-            success: true,
+            success: result.errors.length === 0,
             sync: result,
+            error: result.errors.length ? result.errors.join('\n') : undefined,
         };
     } catch (error) {
         logger.error('Get task-based sync status error via Server Action:', error);

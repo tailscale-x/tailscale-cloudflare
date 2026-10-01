@@ -1,0 +1,33 @@
+name: tailscale-cloudflare-gateway
+
+services:
+  gateway:
+    image: ${CADDY_IMAGE:-ghcr.io/tailscale-x/tailscale-cloudflare-caddy:v0.1.0}
+    hostname: ${TS_HOSTNAME:?Set TS_HOSTNAME in the server-local .env file}
+    environment:
+      TS_HOSTNAME: ${TS_HOSTNAME:?Set TS_HOSTNAME in the server-local .env file}
+      ACME_EMAIL: ${ACME_EMAIL:?Set ACME_EMAIL in the server-local .env file}
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    volumes:
+      - tailscale_state:/var/lib/tailscale
+      - caddy_data:/data
+      - caddy_config:/config
+      - ./secrets:/run/secrets:ro
+    ports:
+      - "80:80/tcp"
+      - "443:443/tcp"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "tailscale ip -4 | grep -q ."]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  tailscale_state:
+  caddy_data:
+  caddy_config:

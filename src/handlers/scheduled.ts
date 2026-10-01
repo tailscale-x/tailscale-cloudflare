@@ -2,14 +2,12 @@ import { env } from 'cloudflare:workers';
 import type { Env } from '../types/env';
 import { TaskBasedDNSService } from '../services/task-based-dns-service';
 import { createLogger } from '../utils/logger';
-import { setupWebhookWithKv } from '../services/tailscale-webhook-manager';
-import { getSetting, getSettings, validateTaskBasedSettings } from '../utils/kv-storage';
+import { getSettings, validateTaskBasedSettings } from '../utils/kv-storage';
 
 const logger = createLogger();
 
 /**
  * Handles scheduled cron jobs for full DNS synchronization
- * Also verifies and creates webhook if webhook URL is stored in KV
  */
 export async function handleScheduled(event: ScheduledEvent): Promise<void> {
 	try {
@@ -22,24 +20,11 @@ export async function handleScheduled(event: ScheduledEvent): Promise<void> {
 		const rawSettings = await getSettings(cfEnv.CONFIG_KV, ownerId);
 		const settings = validateTaskBasedSettings(rawSettings);
 
-		// Verify and create webhook if webhook URL is stored in KV
-		const webhookUrl = await getSetting(cfEnv.CONFIG_KV, ownerId, 'webhookUrl');
-		if (webhookUrl) {
-			try {
-				logger.info(`Verifying Tailscale webhook configuration for: ${webhookUrl}`);
-				await setupWebhookWithKv(settings, cfEnv.CONFIG_KV, webhookUrl, ownerId);
-			} catch (webhookError) {
-				// Log webhook error but don't fail the cron job
-				logger.error('Webhook verification failed (continuing with DNS sync):', webhookError);
-			}
-		} else {
-			logger.info(
-				'Webhook URL not found in KV. Skipping webhook verification. Visit GET /webhook to set up the webhook URL.'
-			);
-		}
-
 		// Perform full DNS sync
-		await TaskBasedDNSService.performSync(settings, ownerId);
+		await TaskBasedDNSService.performSync(settings, ownerId, false, {
+			clientId: cfEnv.TAILSCALE_OAUTH_CLIENT_ID ?? '',
+			clientSecret: cfEnv.TAILSCALE_OAUTH_CLIENT_SECRET ?? '',
+		});
 		logger.info('Cron job completed successfully');
 	} catch (error) {
 		logger.error('Cron job error:', error);
