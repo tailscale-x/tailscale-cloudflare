@@ -1,54 +1,133 @@
-# tailscale-cloudflare
+# tailscale-private-funnel
 
-The Worker manages DNS-only Cloudflare records for a public Caddy gateway and Docker routers on a tailnet. One versioned Caddy image embeds a persistent Tailscale node in either mode. It pins Caddy 2.11.4, `caddy-tailscale`, and `caddy-docker-proxy/v2` in [the Go module](node/go/go.mod). The small local proxy fork calls an exposure hook after successful config reloads; Docker discovery, upstream selection, and reloads are upstream behavior.
-
-## Worker setup
-
-Configure a Tailscale OAuth client with `devices:core:read`, `auth_keys` write, and `devices:core` if joined-device revocation is wanted. Allow only the tags the UI may assign. Set the Cloudflare token and tailnet on the Credentials page. Keep `DNS_RECORD_OWNER_ID` and the KV namespace in the server-local `wrangler.jsonc`. The OAuth client ID and secret remain Wrangler secrets:
+One Go executable provides the private control plane, public gateway, and Docker
+router. Modes are top-level CLI namespaces:
 
 ```sh
-npm ci
-npx wrangler secret put TAILSCALE_OAUTH_CLIENT_ID
-npx wrangler secret put TAILSCALE_OAUTH_CLIENT_SECRET
-npm run deploy
+tailscale-private-funnel control join
+tailscale-private-funnel control serve
+tailscale-private-funnel gateway serve
+tailscale-private-funnel router serve
 ```
 
-The management UI remains public. Create a Gateway or Router node there to obtain a one-hour enrollment code. The installer makes Ed25519 signing and X25519 exchange keys locally. The Worker creates a one-use Tailscale auth key using OAuth and encrypts it to the installer. The enrollment code is removed from KV after redemption on a best-effort basis; KV alone cannot guarantee atomic redemption across concurrent Worker locations. Revocation disables reports and DNS publication and attempts to remove the joined Tailscale device. Router reports expire after ten minutes. DNS reconciliation touches only records bearing this Worker's exact ownership ID.
+Only `control join` opens the Bubble Tea bootstrap UI. The control web UI
+generates non-interactive gateway and router commands after issuing their
+Tailscale auth keys.
 
-## Install
+## Control dashboard
 
-On the target Docker host, use the same installer and image for both modes:
+The control UI keeps the most important decision in view: how the control
+plane, gateways, routers, and policy-approved exposures relate to each other.
+The next-step panel points an operator to the first missing configuration while
+the ownership ledger and health state remain visible beside recent audit events.
+
+![Private Funnel control dashboard](docs/screenshots/control-dashboard-v1.png)
+
+This screenshot uses synthetic identities and the `example.com` development
+zone. Credentials and live DNS data are never rendered into release assets.
+
+## Build and test
 
 ```sh
-sh node/install.sh --role gateway --worker https://YOUR-WORKER.example --email YOU@example.com
-sh node/install.sh --role router --worker https://YOUR-WORKER.example
+go test ./...
+go test -tags caddy ./...
+go vet ./...
+go build -tags caddy ./cmd/tailscale-private-funnel
 ```
 
-Enter the enrollment code when prompted. The installer uses the pinned `ghcr.io/tailscale-x/tailscale-cloudflare-caddy:v0.2.5` image, or `--image ghcr.io/tailscale-x/tailscale-cloudflare-caddy:vX.Y.Z` for an update or rollback. It installs Docker with `curl -fsSL https://get.docker.com | sh` if necessary and adds the invoking user to the Docker group. Log in again to use Docker without `sudo`. The gateway publishes TCP 80/443 and persists Caddy certificates under `/data` and Tailscale state under `/state`. The router mounts the Docker socket, publishes no host ports, and persists Tailscale state. Both use direct `docker run`. No TUN device or host Tailscale daemon is required. The installer uses Docker's default DNS resolver. It waits for Caddy to start and retains the prior container as `tailscale-cloudflare-gateway-backup` or `tailscale-cloudflare-router-backup`. Confirm tailnet routing after installation, since the embedded node may still be joining when Caddy first starts. To restore the prior container, stop and remove the new one, rename the backup to its original name, and start it.
+The container build is defined in `Dockerfile.private-funnel`. The executable
+stores its SQLite database, encrypted settings, and Tailscale state under the
+configured data and state directories.
 
-The gateway uses its single unambiguous public IPv4 endpoint for its A record. A missing or ambiguous endpoint reports a sync error and keeps the previous A record. Caddy terminates HTTPS, redirects HTTP, looks up `_gateway._tcp.{host}`, and uses embedded Tailscale outbound transport to the HTTP backend. Its local certificate permission endpoint permits any hostname that passes ACME validation.
+## Control bootstrap
 
-## Docker router and ingress network
+Run the control join command on the control host. Optional values default to the
+machine hostname, platform config directory, and the official Tailscale control
+server. For automation, provide an auth key file and `--non-interactive`.
 
-The installer creates `tailscale-cloudflare-ingress` and attaches the router to it. Attach every exposed HTTP service to this network as well. `caddy-docker-proxy` does **not** attach the router to arbitrary service networks. For Compose:
-
-```yaml
-services:
-  app:
-    image: your-app:version
-    networks: [ingress]
-    labels:
-      caddy: "http://app.example.com:8080"
-      caddy.bind: "tailscale/router"
-      caddy.reverse_proxy: "{{upstreams 3000}}"
-networks:
-  ingress:
-    external: true
-    name: tailscale-cloudflare-ingress
+```sh
+tailscale-private-funnel control join --auth-key-file ./control.key
+tailscale-private-funnel control serve
 ```
 
-The hostname is the public alias; `3000` is the container's HTTP port. The router accepts tailnet HTTP on port 8080 and proxies to the container IP selected by `{{upstreams 3000}}`. The Worker publishes the alias CNAME, SRV target, and DNS-only router tailnet A record from signed router reports. All exposed services should use the same `caddy` site pattern above. Containers on other networks cannot be reached. The Docker socket grants broad host control, so install the router only on a trusted Docker host.
+After joining, open the printed tailnet URL. Configure Tailscale OAuth, tags,
+administrators, DNS providers, zones, gateways, and routers in the web UI.
 
-## Release and rollback
+For generated gateway/router enrollment, set an enrollment bootstrap listener on
+the control service (this listener exposes only the code-protected auth-key
+exchange, while the management UI remains tailnet-only), for example:
 
-CI builds the single image, adapts both fixed Caddyfiles, and tests Docker label routing across the dedicated ingress network on `main`; a `v*` tag publishes it to GHCR. The Worker is deployed manually with Wrangler. For rollback, rerun the installer with the previous image tag. The persistent volumes retain both node identity and gateway certificates. Before moving public traffic, verify two aliases with different SRV targets, missing SRV, backend failure, HTTP redirect, first-visit HTTPS, and identity after container replacement. The pinned Tailscale plugin panics during `caddy validate` cleanup before a node starts; use `caddy adapt` offline and a live startup test.
+```sh
+tailscale-private-funnel control serve --bootstrap-listen 0.0.0.0:8081
+```
+
+Save that URL as **Enrollment bootstrap URL** in Tailscale settings. Enrollment
+codes are reusable until revoked; each redemption mints a fresh short-lived
+Tailscale auth key and binds the node's report signing key after it joins.
+
+The UI uses Tailscale WhoIs for authorization. Configure `admin`, `operator`,
+and `viewer` selectors in **Tailscale and control roles**. Selectors can be
+users, `group:...`, `tag:...`, `user:...`, or `node:...`; viewers can read,
+operators can preview and sync, and admins can change configuration.
+Tailscale Owner/Admin account roles are managed in the Tailscale admin console
+and are not a stable application claim in WhoIs, so map them to this app with
+groups, tags, node selectors, or an application capability.
+Tagged service nodes do not inherit the creator's user role. Use their tag or
+node selector, or configure a custom Tailscale app capability such as
+`example.com/cap/private-funnel` with a payload like `{"roles":["operator"]}`.
+The capability is read from WhoIs, not from request headers.
+
+Before a router can auto-provision DNS, create an enabled rule in **Router
+exposure policy**. Rules match the complete public hostname and require a
+router role or node selector. An empty policy is default-deny, so a newly
+enrolled router cannot publish arbitrary domains. The policy also gates manual
+router exposure requests; operator access cannot bypass it.
+
+## Gateway and router containers
+
+The UI returns separate `join` and `serve` commands. Run the join command once,
+then run the generated server command. Persist the state and data directories
+so a replacement keeps its Tailscale identity and Caddy certificates. A
+gateway publishes the public ports; only a router mounts the Docker socket:
+
+```sh
+docker run -d --name private-funnel-gateway \
+  --user "$(id -u):$(id -g)" \
+  -p 80:80 -p 443:443 \
+  -v "$PWD/gateway-state:/state" -v "$PWD/gateway-data:/data" \
+  ghcr.io/tailscale-x/tailscale-private-funnel:v0.1.0 gateway serve \
+  --hostname public-gateway --state-dir /state --data-dir /data
+
+docker run -d --name private-funnel-router \
+  --user "$(id -u):$(id -g)" \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  -v "$PWD/router-state:/state" -v "$PWD/router-data:/data" \
+  --group-add "$(stat -c '%g' /var/run/docker.sock)" \
+  -e FUNNEL_INGRESS_NETWORK=private-funnel-ingress \
+  ghcr.io/tailscale-x/tailscale-private-funnel:v0.1.0 router serve \
+  --hostname docker-router --state-dir /state --data-dir /data
+```
+
+Attach HTTP services and the router to the same ingress network, and use the
+`caddy` labels supported by caddy-docker-proxy, including
+`caddy.reverse_proxy={{upstreams PORT}}`. Update with `docker pull` and a new
+container; roll back by starting the previous image tag with the same mounts.
+The router report agent requires that dedicated ingress network and publishes
+only labeled HTTP services. Missing ingress reachability is reported and does
+not create DNS records.
+
+## Provider catalog
+
+The DNS layer uses libdns interfaces. Cloudflare, GoDaddy, and Amazon Route 53
+have concrete adapters in this build; the remaining catalog entries are
+metadata until their provider modules are intentionally linked. Credentials are
+encrypted with a local master key and are never placed in environment
+variables.
+
+## Release
+
+Pull requests run Go tests, vet, and the build. Version tags publish
+`ghcr.io/tailscale-x/tailscale-private-funnel:<tag>` after those checks pass.
+The first stable tag is `v1.0.0`; its release includes native binaries,
+multi-architecture images, checksums, release metadata, and the dashboard
+screenshot above.

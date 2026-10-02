@@ -1,0 +1,13 @@
+{
+  "name": "private-funnel-ui-assets",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tailwindcss -i ./input.css -o ../internal/web/assets/app.css --minify && node ./copy-icons.mjs"
+  },
+  "devDependencies": {
+    "@tabler/icons": "3.48.0",
+    "daisyui": "5.0.50",
+    "tailwindcss": "3.4.17"
+  }
+}

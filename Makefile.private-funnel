@@ -1,0 +1,19 @@
+.PHONY: build test fmt assets templ check
+
+assets:
+	cd ui && npm ci && npm run build
+
+templ:
+	go run github.com/a-h/templ/cmd/templ@v0.3.1020 generate ./internal/web/ui
+
+build:
+	go build -tags caddy ./cmd/tailscale-private-funnel
+
+test:
+	go test ./... && go test -tags caddy ./... && go vet ./...
+
+fmt:
+	gofmt -w cmd internal
+
+check: assets templ test
+	git diff --check
