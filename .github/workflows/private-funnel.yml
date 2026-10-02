@@ -28,7 +28,19 @@ jobs:
           npm ci --prefix ui
           npm run build --prefix ui
           go run github.com/a-h/templ/cmd/templ@v0.3.1020 generate ./internal/web/ui
-          git diff --exit-code -- internal/web/ui/layout_templ.go internal/web/assets/app.css internal/web/assets/icons
+          # Templ and icon assets must be byte-for-byte reproducible. Tailwind
+          # can vary only in the final newline across supported Node runners;
+          # compare normalized bytes while still failing on real CSS drift.
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          generated = Path("internal/web/assets/app.css").read_bytes().replace(b"\r\n", b"\n").rstrip()
+          committed = subprocess.check_output(["git", "show", "HEAD:internal/web/assets/app.css"]).replace(b"\r\n", b"\n").rstrip()
+          if generated != committed:
+              raise SystemExit("generated app.css differs from the committed asset")
+          PY
+          git diff --exit-code -- internal/web/ui/layout_templ.go internal/web/assets/icons
       - run: go test ./...
       - run: go vet ./...
       - run: go build ./cmd/tailscale-private-funnel

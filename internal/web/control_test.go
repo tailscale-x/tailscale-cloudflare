@@ -138,6 +138,37 @@ func TestEnrollmentCommandsUseConfiguredImageAndWritableBindDirs(t *testing.T) {
 	}
 }
 
+func TestDeploymentSettingsDoNotClearOAuthCredentials(t *testing.T) {
+	s, err := store.Open(filepath.Join(t.TempDir(), "data"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	if err := s.SetSecret("tailscale_oauth_client_id", "client-id"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetSecret("tailscale_oauth_client_secret", "client-secret"); err != nil {
+		t.Fatal(err)
+	}
+	r := httptest.NewRequest(http.MethodPost, "/settings", strings.NewReader("image=ghcr.io/example/funnel:v1.0.0&gateway_hostname=gateway.example.com"))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r = WithPrincipal(r, Principal{NodeID: "admin-node", Login: "admin@example.com"})
+	w := httptest.NewRecorder()
+	(&Control{Store: s}).Handler().ServeHTTP(w, r)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("settings status=%d body=%s", w.Code, w.Body.String())
+	}
+	for key, want := range map[string]string{
+		"tailscale_oauth_client_id":     "client-id",
+		"tailscale_oauth_client_secret": "client-secret",
+	} {
+		got, getErr := s.GetSecret(key)
+		if getErr != nil || got != want {
+			t.Fatalf("%s changed after deployment settings: got=%q err=%v", key, got, getErr)
+		}
+	}
+}
+
 func TestManagementAuthorizationUsesTailscaleRoles(t *testing.T) {
 	s, err := store.Open(filepath.Join(t.TempDir(), "data"))
 	if err != nil {

@@ -294,13 +294,19 @@ func (c *Control) saveSettings(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	if err := c.Store.SetSecret("tailscale_oauth_client_id", strings.TrimSpace(r.FormValue("client_id"))); err != nil {
-		http.Error(w, err.Error(), 500)
-		return
-	}
-	if err := c.Store.SetSecret("tailscale_oauth_client_secret", strings.TrimSpace(r.FormValue("client_secret"))); err != nil {
-		http.Error(w, err.Error(), 500)
-		return
+	// The settings page is split into identity and deployment forms. Preserve
+	// existing encrypted OAuth credentials when the deployment form is saved.
+	for key, value := range map[string]string{
+		"tailscale_oauth_client_id":     r.FormValue("client_id"),
+		"tailscale_oauth_client_secret": r.FormValue("client_secret"),
+	} {
+		if value = strings.TrimSpace(value); value == "" {
+			continue
+		}
+		if err := c.Store.SetSecret(key, value); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
 	}
 	if r.Header.Get("HX-Request") == "true" {
 		_, _ = w.Write([]byte("Saved."))
@@ -1157,7 +1163,7 @@ func (c *Control) nodes(w http.ResponseWriter, r *http.Request) {
 			if value, ok := node["last_report"].(int64); ok {
 				last = value
 			}
-			fmt.Fprintf(&b, `<tr><td data-label="Hostname"><strong>%s</strong><small class="pf-muted">%s</small></td><td data-label="Tailnet identity"><code>%s</code></td><td data-label="Health">%s</td><td data-label="Last report"><span class="pf-muted">%s</span></td><td data-label="Action"><a class="pf-text-link" href="/api/nodes/%s">Inspect</a></td></tr>`, safeText(stringValue(node, "hostname", "—")), safeText(stringValue(node, "mode", mode)), safeText(stringValue(node, "id", "—")), pill(state, tone), safeText(unixLabel(last)), safeText(stringValue(node, "id", "")))
+			fmt.Fprintf(&b, `<tr><td data-label="Hostname"><strong>%s</strong><small class="pf-muted">%s</small></td><td data-label="Tailnet identity"><code>%s</code></td><td data-label="Health">%s</td><td data-label="Last report"><span class="pf-muted">%s</span></td><td data-label="Action"><a class="pf-text-link" href="/api/nodes/%s">Inspect</a></td></tr>`, safeText(stringValue(node, "hostname", "—")), safeText(stringValue(node, "mode", mode)), safeText(stringValue(node, "id", "—")), pill(state, tone), safeText(unixLabel(last)), safeText(mode))
 		}
 		b.WriteString(`</tbody></table></div>`)
 	}
