@@ -75,7 +75,9 @@ jobs:
           file: Dockerfile.private-funnel
           push: true
           platforms: linux/amd64,linux/arm64
-          tags: ghcr.io/tailscale-x/tailscale-private-funnel:${{ github.ref_name }}
+          # Use the repository name for the image so GHCR automatically links
+          # the package to this repository and accepts the repository token.
+          tags: ghcr.io/tailscale-x/tailscale-cloudflare:${{ github.ref_name }}
           build-args: VERSION=${{ github.ref_name }}
 
   binaries:
@@ -94,7 +96,7 @@ jobs:
             GOOS=${target%-*} GOARCH=${target#*-} CGO_ENABLED=0 go build -tags caddy -trimpath -ldflags="-s -w -X main.version=${GITHUB_REF_NAME}" -o "dist/tailscale-private-funnel-${target}" ./cmd/tailscale-private-funnel
           done
           sha256sum dist/* > dist/SHA256SUMS
-          printf '{"version":"%s","commit":"%s","image":"ghcr.io/tailscale-x/tailscale-private-funnel:%s"}\n' "$GITHUB_REF_NAME" "$GITHUB_SHA" "$GITHUB_REF_NAME" > dist/release-metadata.json
+          printf '{"version":"%s","commit":"%s","image":"ghcr.io/tailscale-x/tailscale-cloudflare:%s"}\n' "$GITHUB_REF_NAME" "$GITHUB_SHA" "$GITHUB_REF_NAME" > dist/release-metadata.json
       - uses: actions/upload-artifact@v4
         with:
           name: tailscale-private-funnel-binaries

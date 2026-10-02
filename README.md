@@ -95,7 +95,7 @@ docker run -d --name private-funnel-gateway \
   --user "$(id -u):$(id -g)" \
   -p 80:80 -p 443:443 \
   -v "$PWD/gateway-state:/state" -v "$PWD/gateway-data:/data" \
-  ghcr.io/tailscale-x/tailscale-private-funnel:v0.1.0 gateway serve \
+  ghcr.io/tailscale-x/tailscale-cloudflare:v0.1.0 gateway serve \
   --hostname public-gateway --state-dir /state --data-dir /data
 
 docker run -d --name private-funnel-router \
@@ -104,7 +104,7 @@ docker run -d --name private-funnel-router \
   -v "$PWD/router-state:/state" -v "$PWD/router-data:/data" \
   --group-add "$(stat -c '%g' /var/run/docker.sock)" \
   -e FUNNEL_INGRESS_NETWORK=private-funnel-ingress \
-  ghcr.io/tailscale-x/tailscale-private-funnel:v0.1.0 router serve \
+  ghcr.io/tailscale-x/tailscale-cloudflare:v0.1.0 router serve \
   --hostname docker-router --state-dir /state --data-dir /data
 ```
 
@@ -127,7 +127,7 @@ variables.
 ## Release
 
 Pull requests run Go tests, vet, and the build. Version tags publish
-`ghcr.io/tailscale-x/tailscale-private-funnel:<tag>` after those checks pass.
+`ghcr.io/tailscale-x/tailscale-cloudflare:<tag>` after those checks pass.
 The first stable tag is `v1.0.0`; its release includes native binaries,
 multi-architecture images, checksums, release metadata, and the dashboard
 screenshot above.
